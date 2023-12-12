@@ -51,6 +51,9 @@ def create_app():
     migrate.init_app(app, db)
     bcrypt.init_app(app)
 
+    from app.routes import bp as main_bp
+    app.register_blueprint(main_bp, url_prefix='')
+
     from app.auth import bp as auth_bp
     app.register_blueprint(auth_bp, url_prefix='')
 
@@ -60,6 +63,4 @@ def create_app():
     from app.search import bp as search_bp
     app.register_blueprint(search_bp, url_prefix='/search')
     
-    from app.auth import routes 
-
     return app
