@@ -1,8 +1,6 @@
 from flask import Blueprint
 
-bp = Blueprint('auth', __name__,
-               template_folder='templates',
-               static_folder='static')
+bp = Blueprint('auth', __name__, template_folder='templates')
 
 from app.auth import routes 
 from app.auth import forms 

@@ -1,40 +1,18 @@
-from flask import (
-    Flask,
-    render_template,
-    redirect,
-    flash,
-    url_for,
-    session,
-    current_app,
-    Blueprint
-)
 
-from datetime import timedelta
-from sqlalchemy.exc import (
-    IntegrityError,
-    DataError,
-    DatabaseError,
-    InterfaceError,
-    InvalidRequestError,
-)
-from werkzeug.routing import BuildError
-
+from flask import Flask, render_template,redirect,flash,url_for,session,Blueprint,current_app
 from flask_bcrypt import Bcrypt,generate_password_hash, check_password_hash
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+from flask_login import UserMixin,login_user,LoginManager,current_user,logout_user,login_required
+from sqlalchemy.exc import IntegrityError,DataError,DatabaseError,InterfaceError,InvalidRequestError
+from werkzeug.routing import BuildError
+from datetime import timedelta
 
-from flask_login import (
-    UserMixin,
-    login_user,
-    LoginManager,
-    current_user,
-    logout_user,
-    login_required,
-)
-
-from app.models import User, db
-from app import login_manager
 from app.auth import bp 
 from app.auth.forms import login_form,register_form
 from app import bcrypt
+from app.models import User, db
+from app import login_manager
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -45,11 +23,6 @@ def session_handler():
     session.permanent = True
     current_app.permanent_session_lifetime = timedelta(minutes=1)
 
-@bp.route("/", methods=("GET", "POST"), strict_slashes=False)
-def index():
-    return render_template("index.html",title="Home")
-
-
 @bp.route("/login/", methods=("GET", "POST"), strict_slashes=False)
 def login():
     form = login_form()
@@ -59,7 +32,7 @@ def login():
             user = User.query.filter_by(email=form.email.data).first()
             if check_password_hash(user.pwd, form.pwd.data):
                 login_user(user)
-                return redirect(url_for('auth.index'))
+                return redirect(url_for('main.index'))
             else:
                 flash("Invalid Username or password!", "danger")
         except Exception as e:
@@ -71,7 +44,6 @@ def login():
         title="Login",
         btn_action="Login"
         )
-
 
 # Register route
 @bp.route("/register/", methods=("GET", "POST"), strict_slashes=False)

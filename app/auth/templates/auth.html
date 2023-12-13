@@ -24,7 +24,7 @@
                     <h5 class="text-primary">{{ text }}</h5>
                 </div>
                 
-                {% if request.path == '/register/' %}
+                {% if request.path == '/auth/register/' %}
                 <div class="form-group mb-3">
                     {{ form.username(class_="form-control",placeholder="Username")}}
                 </div>
@@ -52,7 +52,7 @@
                     {{ error }}
                     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div> {% endfor%}
-                {% if request.path == '/register/' %}
+                {% if request.path == '/auth/register/' %}
                 <div class="form-group mb-3">
                     {{ form.cpwd(class_="form-control",placeholder="Confirm Password")}}
                 </div>
@@ -69,7 +69,7 @@
                     </div>
 
                     <p>
-                        {% if request.path != '/register/' %}
+                        {% if request.path != '/auth/register/' %}
                         New here?
                         <a href="{{url_for('auth.register')}}">Create account</a>
                         {% else %}

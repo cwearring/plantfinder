@@ -7,7 +7,7 @@ from wtforms import ValidationError,validators
 from app.models import User
 
 
-class login_form(FlaskForm):
+class home_form(FlaskForm):
     email = StringField(validators=[InputRequired(), Email(), Length(1, 64)])
     pwd = PasswordField(validators=[InputRequired(), Length(min=8, max=72)])
     # Placeholder labels to enable form rendering
@@ -16,7 +16,7 @@ class login_form(FlaskForm):
     )
 
 
-class register_form(FlaskForm):
+class init_form(FlaskForm):
     username = StringField(
         validators=[
             InputRequired(),
@@ -38,7 +38,7 @@ class register_form(FlaskForm):
         ]
     )
 
-
+'''
     def validate_email(self, email):
         if User.query.filter_by(email=email.data).first():
             raise ValidationError("Email already registered!")
@@ -46,3 +46,4 @@ class register_form(FlaskForm):
     def validate_uname(self, uname):
         if User.query.filter_by(username=username.data).first():
             raise ValidationError("Username already taken!")
+'''
