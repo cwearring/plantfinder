@@ -8,6 +8,9 @@ from sqlalchemy.exc import IntegrityError,DataError,DatabaseError,InterfaceError
 from werkzeug.routing import BuildError
 from datetime import timedelta
 
+from flask_session import Session
+server_session = Session() # Initialize the Flask-Session object 
+
 db = SQLAlchemy()
 migrate = Migrate()
 bcrypt = Bcrypt()
@@ -23,16 +26,33 @@ def get_absolute_template_folder(bp):
 def create_app():
     app = Flask(__name__)
 
-    app.secret_key = 'secret-key'
+    # Flask-Session Configuration
+    # app.config['SESSION_TYPE'] = 'filesystem'
+    app.config['SESSION_TYPE'] = 'sqlalchemy'
+    app.config['SESSION_SQLALCHEMY'] = db  # Use the same SQLAlchemy instance as your app
+    
+    app.config["SESSION_PERMANENT"] = False
+    app.config['SESSION_USE_SIGNER'] = True
+
+    # Flask-SQLAlchemy Configuration
     app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///database.db"
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
+
+    # Data store setup 
+    app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///database.db"
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
+
+    # Other Flask App Configurations
+    app.secret_key = 'secret-key'
     app.config['EXPLAIN_TEMPLATE_LOADING'] = True
     app.config['TESTING'] = True
 
+    # Extensions Initialization
     login_manager.init_app(app)
     db.init_app(app)
     migrate.init_app(app, db)
     bcrypt.init_app(app)
+    server_session = Session()
 
     from app.auth import bp as auth_bp
     app.register_blueprint(auth_bp, url_prefix='/auth')

@@ -13,6 +13,7 @@ from app.auth.forms import login_form,register_form
 from app import bcrypt
 from app.models import User, db
 from app import login_manager
+from app.main.forms import test_form
 
 @login_manager.user_loader
 def load_user(user_id):

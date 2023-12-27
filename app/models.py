@@ -11,3 +11,11 @@ class User(UserMixin, db.Model):
 
     def __repr__(self):
         return '<User %r>' % self.username
+    
+class UserData(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    data = db.Column(db.PickleType())
+
+class SessionData(db.Model):
+    id = db.Column(db.String(36), primary_key=True)
+    data = db.Column(db.PickleType())

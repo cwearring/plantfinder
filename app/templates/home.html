@@ -1,0 +1,62 @@
+{% block content%}
+<div class="container">
+    <!-- First Section: Instructions -->
+    <div class="row mt-4">
+        <div class="col-lg-5 col-md-6 m-auto card p-4">
+            <div class="text-center">
+                <h2>Search supplier inventories</h2>
+            </div>
+        </div>
+    </div>
+
+    <!-- Second Section: Refresh Data Button -->
+    <div class="row mt-4">
+        <div class="col-lg-5 col-md-6 m-auto card p-4">
+            <div class="text-center">
+                <button id = "refresh_button" class="btn btn-primary">Refresh Supplier Inventories</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Third Section: Form for Search -->
+    <div class="row mt-4">
+        <div class="col-lg-5 col-md-6 m-auto card p-4">
+            
+            <form action="{{ url_for('main.search_data') }}" method="POST" class="card-body">
+                {{ form.csrf_token }}
+                <!-- Your form fields go here -->
+                <div class="form-group mb-3">
+                    {{ form.test(class_="form-control", placeholder="test") }}
+                </div>
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-block btn-primary mb-3">Search</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            // Get the button element
+            var refreshButton = document.getElementById("refreshButton");
+    
+            // Add a click event listener to the button
+            refreshButton.addEventListener("click", function () {
+                // Call the initSearchDropBox() function when the button is clicked
+                initSearchDropBox();
+            });
+        });
+    
+        // Define the initSearchDropBox() function
+        function initSearchDropBox() {
+            // Your function implementation goes here
+            // This function will be called when the button is clicked
+            console.log("Refreshing Supplier Inventories...");
+            // Add your logic to refresh supplier inventories or perform other actions
+        }
+    </script>
+
+</div>
+{% endblock %}
+
