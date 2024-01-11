@@ -1,0 +1,56 @@
+<html lang="en">
+
+<!-- This implementation uses Flask-SocketIO to emit real-time updates 
+    from the server to the client. The status panel is updated dynamically as the 
+    search progresses, and the search results are displayed once the search is complete.
+-->
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Interface</title>
+</head>
+<body>
+    <h1>Search Interface</h1>
+    <form onsubmit="search(event)">
+        <label for="search_term">Enter Search Term:</label>
+        <input type="text" id="search_term" required>
+        <button type="submit">Search</button>
+    </form>
+
+    <h2>Status Panel:</h2>
+    <ul id="status_panel"></ul>
+
+    <h2>Search Results:</h2>
+    <ul id="search_results"></ul>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <script>
+        var socket = io.connect('http://' + document.domain + ':' + location.port);
+
+        socket.on('status_update', function (data) {
+            var statusPanel = document.getElementById('status_panel');
+            var listItem = document.createElement('li');
+            listItem.appendChild(document.createTextNode(data));
+            statusPanel.appendChild(listItem);
+        });
+
+        socket.on('search_results', function (data) {
+            var searchResults = document.getElementById('search_results');
+            searchResults.innerHTML = '';
+            for (var i = 0; i < data.length; i++) {
+                var listItem = document.createElement('li');
+                listItem.appendChild(document.createTextNode(data[i]));
+                searchResults.appendChild(listItem);
+            }
+        });
+
+        function search(event) {
+            event.preventDefault();
+            var searchTerm = document.getElementById('search_term').value;
+            socket.emit('search', searchTerm);
+        }
+    </script>
+</body>
+</html>
+

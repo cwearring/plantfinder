@@ -1,0 +1,26 @@
+from flask import Flask, render_template, request
+from flask_socketio import SocketIO
+
+app = Flask(__name__)
+socketio = SocketIO(app)
+
+sample_results = [
+    "Result 1: Lorem ipsum dolor sit amet",
+    "Result 2: Consectetur adipiscing elit",
+    "Result 3: Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua",
+]
+
+@socketio.on('search')
+def handle_search(search_term):
+    search_results = [result for result in sample_results if search_term.lower() in result.lower()]
+    status_lines = [f"Searching for '{search_term}'...", f"Found {len(search_results)} results."]
+    for line in status_lines:
+        socketio.emit('status_update', line)
+    socketio.emit('search_results', search_results)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+if __name__ == '__main__':
+    socketio.run(app, debug=True)
