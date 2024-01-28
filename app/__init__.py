@@ -21,7 +21,7 @@ login_manager.session_protection = "strong"
 login_manager.login_view = "auth.login"
 login_manager.login_message_category = "info"
 
-# Function to get the absolute template folder path
+# Function to get the absolute template folder path - for debugging
 def get_absolute_template_folder(bp):
     return bp.jinja_loader.searchpath[0] if bp.jinja_loader.searchpath else None
 
@@ -36,11 +36,7 @@ def create_app():
     app.config["SESSION_PERMANENT"] = False
     app.config['SESSION_USE_SIGNER'] = True
 
-    # Flask-SQLAlchemy Configuration
-    app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///database.db"
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
-
-    # Data store setup 
+    # Flask-SQLAlchemy and DataStore Configuration
     app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///database.db"
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 
@@ -54,7 +50,7 @@ def create_app():
     db.init_app(app)
     migrate.init_app(app, db)
     bcrypt.init_app(app)
-    server_session = Session()
+    # server_session = Session()
 
     from app.auth import bp as auth_bp
     app.register_blueprint(auth_bp, url_prefix='/auth')

@@ -29,3 +29,19 @@ def get_user_data(user_id):
         return user_data.data
     else:
         return None
+
+# first try 2024-01-28 
+class ThreadComplete(db.Model):
+    __tablename__ = 'threads'
+    id = db.Column(db.String, primary_key=True)
+    task_complete = db.Column(db.Boolean, default=False)
+
+    def __repr__(self):
+        return f"<ThreadComplete(id='{self.id}', task_complete={self.task_complete})>"
+
+    @classmethod
+    def is_task_complete(cls, id):
+        record = cls.query.filter_by(id=id).first()
+        return record.task_complete if record else None
+    
+
