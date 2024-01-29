@@ -42,6 +42,8 @@ def create_app():
 
     # Other Flask App Configurations
     app.secret_key = 'secret-key'
+    # app.config['PERMANENT_SESSION_LIFETIME']
+    # app.config['SESSION_COOKIE_SECURE']
     app.config['EXPLAIN_TEMPLATE_LOADING'] = True
     app.config['TESTING'] = True
 
@@ -69,5 +71,40 @@ def create_app():
     x2 = get_absolute_template_folder(init_bp)
     x3 = get_absolute_template_folder(search_bp)
     jnk=0
+
+    return app
+
+
+def create_app_planttableextract():
+    app = Flask(__name__)
+
+    # Flask-Session Configuration
+    # app.config['SESSION_TYPE'] = 'filesystem'
+    app.config['SESSION_TYPE'] = 'sqlalchemy'
+    app.config['SESSION_SQLALCHEMY'] = db  
+    app.config['SESSION_SQLALCHEMY_TABLE'] = 'sessions'
+    app.config["SESSION_PERMANENT"] = False
+    app.config['SESSION_USE_SIGNER'] = True
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=1) 
+    app.secret_key = 'secret-key'
+
+    # Flask-SQLAlchemy and DataStore Configuration
+    # local docker postgres image - no vector store as of 2024-01-23
+    SQLALCHEMY_DATABASE_URI ='postgresql+psycopg2://postgres:cwearring@localhost:5432/postgres'
+    app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
+
+    # Other Flask App Configurations
+    app.config['EXPLAIN_TEMPLATE_LOADING'] = True
+    app.config['TESTING'] = True
+    
+    from . import routes
+    # from .routes import bp
+    # app.register_blueprint(bp)
+
+    # Extensions Initialization
+    db.init_app(app)
+    with app.app_context():
+        db.create_all()
+    migrate.init_app(app, db)
 
     return app

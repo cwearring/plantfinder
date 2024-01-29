@@ -24,12 +24,6 @@
             {% if initStatusElement %}
                 <p id="initStatusElement" class="text-left">{{ initStatusElement | safe }}</p>
             {% endif %}
-            {% if filesFoundElement %}
-                <p id="filesFoundElement" class="text-left">{{ filesFoundElement | safe }}</p>
-            {% endif %}
-            {% if filesLoadedElement %}
-                <p id="filesLoadedElement" class="text-left">{{ filesLoadedElement | safe }}</p>
-            {% endif %}
         </div>
     </div>
 
@@ -102,30 +96,29 @@
         var initButton = document.getElementById("initButton");
         // var initStatus = document.getElementById("init_status");
         var initRow = document.getElementById("initRow");
+        // the status url from flask routes 
+        var statusUrl = "{{ url_for('init.status') }}";
 
         // Add a click event listener to the button
         initButton.addEventListener("click", function () {
             // Call the Flask route with an AJAX request
             console.log('Entered the initdata event')
             $.ajax({
-                url: "/init/init",
+                url: "/init/init2",
                 type: "POST",
+                xhrFields: {
+                    withCredentials: true
+                },
                 success: function (response) {
                     // Assign each entry to a distinct JavaScript variable
                     var status = response.status;
-                    var filesFound = response.filesfound;
-                    var filesLoaded = response.filesloaded;
 
                     // Update the corresponding elements with the new variables
                     var initStatusElement = document.getElementById("initStatusElement");
                     initStatusElement.textContent = status;
 
-                    // Update the elements for filesFound and filesLoaded
-                    var filesFoundElement = document.getElementById("filesFoundElement");
-                    filesFoundElement.textContent = "Files Found: " + filesFound;
-
-                    var filesLoadedElement = document.getElementById("filesLoadedElement");
-                    filesLoadedElement.textContent = "Files Loaded: " + filesLoaded;
+                    // Redirect to the status page on successful response
+                    window.location.href = statusUrl;  
 
                     // Show the results row
                     initRow.style.display = "block";
@@ -137,6 +130,7 @@
         });
     });
 </script>
+
 
 
 

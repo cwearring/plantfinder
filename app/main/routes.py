@@ -68,17 +68,3 @@ def index():
                             initStatusElement=initStatusElement, 
                             filesFoundElement=filesFoundElement,
                             filesLoadedElement=filesLoadedElement)
-
-# this route is not used - it is an example 
-@bp.route('/store_data')
-def store_data():
-    # Generate a unique identifier for the session data
-    session_id = session['session_id']
-
-    # Store the session data in the database
-    session_data = SessionData(id=session_id, data={'example_key': 'example_value'})
-    db.session.merge(session_data)
-    db.session.commit()
-
-    return 'Data stored in the database.'
-

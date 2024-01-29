@@ -3,7 +3,7 @@ from flask import Flask, render_template,redirect,flash,url_for,session,Blueprin
 from flask_bcrypt import Bcrypt,generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-from flask_login import UserMixin,login_user,LoginManager,current_user,logout_user,login_required
+from flask_login import UserMixin,login_user,LoginManager, current_user,logout_user,login_required
 from sqlalchemy.exc import IntegrityError,DataError,DatabaseError,InterfaceError,InvalidRequestError
 from werkzeug.routing import BuildError
 from datetime import timedelta

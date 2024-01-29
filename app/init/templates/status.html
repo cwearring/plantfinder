@@ -1,0 +1,60 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Init Interface</title>
+</head>
+<body>
+
+    <h2>Status Panel:</h2>
+    <div id="status_updates"></div>
+
+     <script type="text/javascript">
+        var currentUserId = "{{ current_user.id if current_user.is_authenticated else 0 }}";
+    </script>
+    
+    <script>
+        var eventSource = new EventSource("/init/status_stream");
+        eventSource.onmessage = function(event) {
+            var statusDiv = document.getElementById("status_updates");
+            statusDiv.innerHTML += event.data + "<br>";
+        };
+    </script>
+
+    <script>
+        function checkForCompletion() {
+            // Prepare the data to be sent
+            const dataToSend = JSON.stringify({ user_id: currentUserId });
+
+            fetch("{{ url_for('init.check_task') }}")
+                .then(response => response.json())
+                .then(data => {
+                    if (data.task_complete) {
+                        // Print current user's name if available
+                        console.log("Task Complete Current User:", currentUserId);
+
+                        // Show confirmation dialog
+                        if (confirm("Task complete.")) {
+                            // User acknowledged, redirect or update the page
+                            window.location.href = "{{ url_for('main.index') }}";
+                        } else {
+                            // User canceled, maybe do something else
+                            window.location.href = "{{ url_for('main.index') }}";
+                        }
+                    } else {
+                        // Task is not complete, check again after some time
+                        setTimeout(checkForCompletion, 3000); // 3 seconds
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
+        
+        // Start checking for task completion after the page loads
+        window.onload = checkForCompletion;
+        
+    </script>
+
+</body>
+
+</html>
+    

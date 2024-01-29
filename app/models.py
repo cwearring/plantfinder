@@ -30,7 +30,8 @@ def get_user_data(user_id):
     else:
         return None
 
-# first try 2024-01-28 
+
+# Track the status of long running initialize background thread 
 class ThreadComplete(db.Model):
     __tablename__ = 'threads'
     id = db.Column(db.String, primary_key=True)
