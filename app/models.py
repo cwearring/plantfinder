@@ -30,11 +30,10 @@ def get_user_data(user_id):
     else:
         return None
 
-
 # Track the status of long running initialize background thread 
 class ThreadComplete(db.Model):
     __tablename__ = 'threads'
-    id = db.Column(db.String, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
     task_complete = db.Column(db.Boolean, default=False)
 
     def __repr__(self):
@@ -45,4 +44,3 @@ class ThreadComplete(db.Model):
         record = cls.query.filter_by(id=id).first()
         return record.task_complete if record else None
     
-

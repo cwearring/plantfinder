@@ -37,12 +37,13 @@ def index():
 
     if user_data:
         initStatusElement = user_data.data.get('status')
-        filesFoundElement = None
-        filesLoadedElement = None
+    elif current_user.is_authenticated: # but no user data 
+        user = UserData(id=user_id, data={ 'status':"Please initialize the inventory"})
+        db.session.merge(user)
+        db.session.commit()
+        initStatusElement = UserData.query.get(user_id)
     else:
-        initStatusElement = "Please initialize the inventory"  # 
-        filesFoundElement = None
-        filesLoadedElement = None
+        initStatusElement = "Please initialize the inventory"  
 
     # create an instance from the form class
     form=search_form()
@@ -65,6 +66,5 @@ def index():
                             template_folder='templates',
                             result=result,
                             search_term=search_term,
-                            initStatusElement=initStatusElement, 
-                            filesFoundElement=filesFoundElement,
-                            filesLoadedElement=filesLoadedElement)
+                            initStatusElement=initStatusElement
+                            )

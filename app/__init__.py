@@ -29,23 +29,29 @@ def create_app():
     app = Flask(__name__)
 
     # Flask-Session Configuration
-    # app.config['SESSION_TYPE'] = 'filesystem'
+    app.secret_key = 'secret-key'
     app.config['SESSION_TYPE'] = 'sqlalchemy'
     app.config['SESSION_SQLALCHEMY'] = db  # Use the same SQLAlchemy instance as your app
-    
+    app.config['SESSION_SQLALCHEMY_TABLE'] = 'sessions'
     app.config["SESSION_PERMANENT"] = False
     app.config['SESSION_USE_SIGNER'] = True
 
-    # Flask-SQLAlchemy and DataStore Configuration
-    app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///database.db"
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
+    # use these to persist a user even when the browser is closed 
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=1) 
+    app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=1)
 
-    # Other Flask App Configurations
-    app.secret_key = 'secret-key'
-    # app.config['PERMANENT_SESSION_LIFETIME']
-    # app.config['SESSION_COOKIE_SECURE']
-    app.config['EXPLAIN_TEMPLATE_LOADING'] = True
+    # set these to true for debugging and remove for production
+    app.config['EXPLAIN_TEMPLATE_LOADING'] = False
     app.config['TESTING'] = True
+
+    # Flask-SQLAlchemy and DataStore Configuration
+    # app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///database.db"
+
+    # local docker postgres image - no vector store as of 2024-01-23
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql+psycopg2://postgres:cwearring@localhost:5432/postgres'
+
+    # Set SESSION_COOKIE_SECURE to True in a production environment with HTTPS
+    # app.config['SESSION_COOKIE_SECURE']
 
     # Extensions Initialization
     login_manager.init_app(app)

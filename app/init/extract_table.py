@@ -381,8 +381,8 @@ def save_all_file_tables_in_dir(dirpath:str):
     # yield f"Found files: {filenames}"
 
 # loop the files, and extract tables  
-    for filename in filenames[0:2]:
-    # for filename in [filenames[0]]:
+    # for filename in filenames:
+    for filename in [filenames[0]]:
         print(f'\n{filename} at {datetime.now():%b %d %I:%M %p}')
         yield f'Started processing {filename} at {datetime.now():%b %d %I:%M %p}'
 
@@ -413,12 +413,12 @@ def background_task(app, dirpath, user_id):
     with app.app_context():
 
         # create the initial value as false or update existing 
-        check_thread = ThreadComplete.query.get(str(user_id))
+        check_thread = ThreadComplete.query.get(user_id)
         if check_thread:
             check_thread.task_complete = False
             db.session.commit()
         else:
-            new_thread = ThreadComplete(id=str(user_id), task_complete=False)
+            new_thread = ThreadComplete(id=user_id, task_complete=False)
             db.session.add(new_thread)
             db.session.commit()
 
