@@ -89,9 +89,10 @@ def create_app_planttableextract():
     app.config['SESSION_TYPE'] = 'sqlalchemy'
     app.config['SESSION_SQLALCHEMY'] = db  
     app.config['SESSION_SQLALCHEMY_TABLE'] = 'sessions'
-    app.config["SESSION_PERMANENT"] = False
+    app.config["SESSION_PERMANENT"] = True
     app.config['SESSION_USE_SIGNER'] = True
-    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=1) 
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1) 
+    app.config['SESSION_COOKIE_SECURE'] = True
     app.secret_key = 'secret-key'
 
     # Flask-SQLAlchemy and DataStore Configuration

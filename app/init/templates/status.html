@@ -1,60 +1,107 @@
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Init Interface</title>
-</head>
-<body>
-
-    <h2>Status Panel:</h2>
-    <div id="status_updates"></div>
-
-     <script type="text/javascript">
-        var currentUserId = "{{ current_user.id if current_user.is_authenticated else 0 }}";
-    </script>
+{% extends "base.html" %}
+{% block title %} Init Interface {% endblock %}
     
-    <script>
-        var eventSource = new EventSource("/init/status_stream");
-        eventSource.onmessage = function(event) {
-            var statusDiv = document.getElementById("status_updates");
-            statusDiv.innerHTML += event.data + "<br>";
-        };
-    </script>
+{% block content %}
+<div class="container py-4">
+    <h2 class = "text-center">Status Panel:</h2>
 
-    <script>
-        function checkForCompletion() {
-            // Prepare the data to be sent
-            const dataToSend = JSON.stringify({ user_id: currentUserId });
+    <div id="status_updates_div">
+        <!-- Row: Display init status -->
+        <div class="row mt-2">
+            <div class="col-lg-9 col-md-6 m-auto card p-4 html" id="messageContainer">
+              <!-- <p id="status_updates" >{{ status_updates | safe }}</p> -->
+            </div>
+        </div>
+    </div>
+</div>
 
-            fetch("{{ url_for('init.check_task') }}")
-                .then(response => response.json())
-                .then(data => {
-                    if (data.task_complete) {
-                        // Print current user's name if available
-                        console.log("Task Complete Current User:", currentUserId);
+<!-- Modal Structure (using Bootstrap) -->
+<div class="modal fade" id="completionModal" tabindex="-1" role="dialog" aria-labelledby="completionModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="completionModalLabel">Task Complete</h5>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          Task is complete. Would you like to return to the main page?
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">Stay Here</button>
+          <button type="button" class="btn btn-primary" id="confirmCompletion">Go to Main Page</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+<script>
+    var currentUserId = "{{ current_user.id if current_user.is_authenticated else 0 }}";
+    var eventSource = new EventSource("/init/status_stream");
 
-                        // Show confirmation dialog
-                        if (confirm("Task complete.")) {
-                            // User acknowledged, redirect or update the page
-                            window.location.href = "{{ url_for('main.index') }}";
-                        } else {
-                            // User canceled, maybe do something else
-                            window.location.href = "{{ url_for('main.index') }}";
-                        }
-                    } else {
-                        // Task is not complete, check again after some time
-                        setTimeout(checkForCompletion, 3000); // 3 seconds
-                    }
-                })
-                .catch(error => console.error('Error:', error));
+    eventSource.onmessage = function(event) {
+        //var statusParagraph = document.getElementById("status_updates");
+        var messageContainer = document.getElementById("messageContainer");
+
+        // catch the ping but don't display
+        if (event.data == "ping"){
+            console.log("Received keep-alive message");
+        } else {
+            // update the paragraph 
+            messageContainer.innerHTML += event.data + "<br>";  // more risky
+            var newParagraph = document.createElement("p");
+            newParagraph.textContent = event.data;
+            //messageContainer.appendChild(newParagraph);        
         }
-        
-        // Start checking for task completion after the page loads
-        window.onload = checkForCompletion;
-        
-    </script>
+    };
 
-</body>
+    eventSource.onerror = function(event) {
+        console.error("EventSource failed.", event);
+        eventSource.close(); // Consider closing and restarting the EventSource if appropriate
+    };
 
-</html>
+    eventSource.onclose = function(event) {
+        console.log("Stream closed. Attempting to reconnect...");
+        setTimeout(function() {
+            eventSource = new EventSource("/init/status_stream");
+            // Re-bind onmessage, and other event handlers as necessary
+        }, 3000); // Retry after 3 seconds
+    };
+
+    function showCompletionModal() {
+        $('#completionModal').modal('show'); // Show the modal using jQuery (Bootstrap dependency)
+    }
     
+   function checkForCompletion() {
+        // Prepare the data to be sent
+        const dataToSend = JSON.stringify({ user_id: currentUserId });
+
+        fetch("{{ url_for('init.check_task') }}")
+            .then(response => response.json())
+            .then(data => {
+                if (data.task_complete) {
+                    // Print current user's name if available
+                    console.log("Task Complete Current User:", currentUserId);
+                    // Show confirmation dialog
+                    showCompletionModal();
+                } else {
+                    // Task is not complete, check again after some time
+                    setTimeout(checkForCompletion, 3000); // 3 seconds
+                }
+            })
+            .catch(error => console.error('Error:', error));
+
+    }
+
+    // Add event listener to the modal's confirmation button
+    document.getElementById('confirmCompletion').addEventListener('click', function() {
+    window.location.href = "{{ url_for('main.index') }}";
+    });
+
+    // Start checking for task completion after the page loads
+    window.onload = checkForCompletion;
+    
+</script>
+
+{% endblock %}

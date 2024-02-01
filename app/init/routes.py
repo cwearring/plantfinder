@@ -15,7 +15,7 @@ from app.init import bp
 from app.models import User,  SessionData, UserData, ThreadComplete
 
 from .extract_table import get_filenames_in_directory, get_file_table, save_class_in_session
-from .extract_table import background_task, message_queue
+from .extract_table import background_task, message_queue, Empty
 
 # refresh inventory is called from button event via javascript 
 @bp.route('/init/', methods=('GET','POST'))
@@ -90,12 +90,16 @@ def check_task():
 
 @bp.route('/status_stream')
 def status_stream():
-    def generate():        
-        while True:            
-            message = message_queue.get()
+    def generate():
+        while True:
+            try:
+                message = message_queue.get(timeout=10)  # Adjust timeout as needed
+            except Empty:
+                yield "data: ping\n\n"  # Send a ping or keep-alive message
+                continue
             if message is None:
                 break
-            yield f"data: {message}\n\n"
-            print(f"status stream message {message}")
+            yield f"data: {message}\n\n"            
+
     return Response(generate(), mimetype='text/event-stream')
 

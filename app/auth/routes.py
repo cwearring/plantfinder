@@ -42,7 +42,7 @@ def login():
     return render_template("auth.html",
         form=form,
         text="Login",
-        title="Login",
+        title="Login to Plantfinder",
         btn_action="Login"
         )
 
@@ -88,7 +88,7 @@ def register():
     return render_template("auth.html",
         form=form,
         text="Create account",
-        title="Register",
+        title="Register for Plantfinder",
         btn_action="Register account"
         )
 

@@ -80,13 +80,12 @@
     
     {% else %}
 
-    <h1>Plantfinder </h1>
+    <h1>  {{ title }}  </h1>
     <h3>Search supplier inventories for the plants you need</h3>
     <a href="{{url_for('auth.login')}}">Sign in/Sign Up</a>
     
     {% endif %}
 </div>
-
 
 <!-- JavaScript to call the initData function -->
 <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
@@ -103,6 +102,9 @@
         initButton.addEventListener("click", function () {
             // Call the Flask route with an AJAX request
             console.log('Entered the initdata event')
+            console.log('Name {{current_user.username}}')
+            console.log('is_authenticated {{current_user.is_authenticated}}')
+
             $.ajax({
                 url: "/init/init2",
                 type: "POST",

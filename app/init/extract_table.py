@@ -45,6 +45,7 @@ import os
 import ast
 import re
 import uuid
+import hashlib
 from dotenv import load_dotenv
 
 # fitz is the PDF parser with table recognize capabilities 
@@ -71,7 +72,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import  Column, inspect
 
 # queues for streaming updates during init 
-from queue import Queue
+from queue import Queue, Empty
 import threading
 # Global message queue
 message_queue = Queue()
@@ -79,6 +80,10 @@ message_queue = Queue()
 # get functions and variables created by __init__.py
 from app import db, create_app
 from app.models import ThreadComplete, UserData, get_user_data
+
+def generate_hash(text):
+    hash_object = hashlib.sha256(text.encode())
+    return hash_object.hexdigest()
 
 def get_filenames_in_directory(directory_path):
     try:
@@ -239,49 +244,57 @@ def get_file_table(dirpath:str, filename:str):
         )
         response = query_engine.query(\
         f"Retrieve column headings as a python list for a product price sheet with {numcols} columns ")
+
+        # get info from the header row
         header_rownum = int(response.source_nodes[0].id_)
         header_node_text = response.source_nodes[0].text
         header_raw = tmp[header_rownum]
+        p_key = 'id_hash'
+        header_guess = [p_key] + [x.replace(' ','').replace('\n','_').replace('(','_').replace(')','')
+                                  for x in header_raw] + ['TableName', 'Text'] 
 
         # match to header_word list 
-        header_guess = [best_header_word_match(word, header_words) for word in tmp[int(response.source_nodes[0].id_)]]
-
-        # save the file header info
-        table_header = {'filename': filename,
-                                'numcols' : numcols,
-                                'header_rownum':header_rownum,
-                                'header_guess':header_guess, 
-                                'header_raw':header_raw, 
-                                'header_node_text':header_node_text}
-
+        # header_guess = [best_header_word_match(word, header_words) for word in tmp[header_rownum]]
+        
         # debug and logging 
-        print(#response.source_nodes[0].id_, '\n',
+        #print(#response.source_nodes[0].id_, '\n',
               # response.source_nodes[0].text,'\n',
-              tmp[int(response.source_nodes[0].id_)], '\n',
-              header_guess)
+              # tmp[int(response.source_nodes[0].id_)], '\n',
+              # header_guess)
         
         # merge with the table from the first page 
-        table_data = [row for row in tmp[header_rownum+1:]]
+        table_data = [[generate_hash(f"{row}")] + row + [filename, f"{row}"] for row in tmp[header_rownum+1:]]
         
-        # add the rest of the pages 
+        # add the tables from the rest of the pages 
         for pagenum in range(1,doc.page_count):
             tbls = doc[pagenum].find_tables(vertical_strategy=tbl_strategy, horizontal_strategy=tbl_strategy)
             tbl_page = [row for tbl in tbls.tables for row in tbl.extract() if row != header_raw]
-            # tbl_list_of_dicts = [dict(zip(header_guess,row)) for row in tbl_page]
-            table_data.extend([row for row in tbl_page])
+            table_data.extend([[generate_hash(f"{row}")] + row + [filename, f"{row}"] for row in tbl_page])
 
         jnk=0
         # create a pandas dataframe 
         df = pd.DataFrame(table_data, columns = header_guess)
+        df.set_index('id_hash', inplace=True, drop=False)
+
+        # check for distinct values 
+        # for col_nm in df.columns.tolist():
+            # print(f"{col_nm}: {df[col_nm].nunique()}  of {len(df)}")
+
+        # save the file header info
+        table_header = {'filename': filename,
+                        'numcols' : numcols,
+                        'header_rownum':header_rownum,
+                        'header_guess':header_guess, 
+                        'header_raw':header_raw, 
+                        'header_node_text':header_node_text}
+
+        return df, table_header, p_key
 
     else:
         print('No table found with fitz parse by grid or text ')
-
-    jnk = 0 # for debug
-
-    return df, table_header
-
-def create_class_from_df(df, class_name):
+        return None, None, None
+    
+def create_class_from_df(df, class_name, p_key):
     '''
     Dynamically create a SQLAlchemy class from a dataframe 
     '''
@@ -298,12 +311,12 @@ def create_class_from_df(df, class_name):
         # attributes = {'id': Column(db.Integer, primary_key=True, autoincrement=True)}
         attributes = {
             '__tablename__': class_name.lower(),  # Table name, typically lowercase
-            'id': Column(db.Integer, primary_key=True, autoincrement=True),
+            p_key : Column(db.CHAR(64), primary_key=True, convert_unicode=True),
             '__table_args__': {'extend_existing': True}  # Add this line
         }
 
         # Add columns from DataFrame
-        for col in df.columns:
+        for col in [c for c in df.columns if c != p_key]:
             attributes[col] = Column(type_mapping[str(df[col].dtype)])
 
         return type(class_name, (db.Model,), attributes)
@@ -315,12 +328,11 @@ def create_class_from_df(df, class_name):
         # Raise an exception with a descriptive message
         raise ValueError(f"An error occurred in create_class_from_df: {str(e)}")
 
-def save_class_in_session(df, class_name):
+def save_class_in_session(df, class_name, p_key):
     '''
         make a sqlalchemy ORM class for each dataframe - add column = id:int as primary key
     '''
-    jnk=0
-    print(current_app.name)
+    jnk=0 #     print(current_app.name)
 
     try:
         #with current_app.app_context():
@@ -329,7 +341,10 @@ def save_class_in_session(df, class_name):
 
         # Create ORM class from DataFrame
         DynamicClass = \
-            create_class_from_df(df,class_name.lower().replace(' ','_').replace('-','_').replace('.','_')[0:12] )
+            create_class_from_df(df,
+                                 class_name.lower().replace(' ','_').replace('-','_').replace('.','_')[0:12],
+                                 p_key 
+                                 )
 
         # Check if the table already exists to avoid overwriting
         if not inspector.has_table(DynamicClass.__tablename__):
@@ -341,7 +356,7 @@ def save_class_in_session(df, class_name):
             obj = DynamicClass(**row.to_dict())
 
             # Add the instance to the session
-            db.session.add(obj)
+            db.session.merge(obj)
             
         # Commit the session to save changes to the database
         db.session.commit()
@@ -362,8 +377,7 @@ def save_class_in_session(df, class_name):
 def save_all_file_tables_in_dir(dirpath:str):
 
     load_dotenv()
-    # app = current_app
-    print(current_app.name)
+    # app = current_app #     print(current_app.name)
 
     # NOTE: for local testing only, do NOT deploy with your key hardcoded
     tmp = os.getenv('OPENAI_API_KEY')
@@ -376,27 +390,30 @@ def save_all_file_tables_in_dir(dirpath:str):
     file_class = {}
 
     # get the files and yield the status
-    # dirpath = '../pdffiles'
     filenames, filepath = get_filenames_in_directory(dirpath)
-    # yield f"Found files: {filenames}"
+    yield f'Found {len(filenames)} files:\n'
+    for tmp in filenames:
+        yield('  ' + str(tmp))
 
 # loop the files, and extract tables  
-    # for filename in filenames:
-    for filename in [filenames[0]]:
-        print(f'\n{filename} at {datetime.now():%b %d %I:%M %p}')
+    for filename in filenames:
+    # for filename in [filenames[0]]:
+        print(f'\nStarted processing {filename} at {datetime.now():%b %d %I:%M %p}')
+        yield ' '
         yield f'Started processing {filename} at {datetime.now():%b %d %I:%M %p}'
 
         # create a well formed key
         filetoken = filename.split('.')[0].replace(' ', '')
 
         # extract tables as dataframes 
-        file_table, file_table_header = get_file_table(dirpath = dirpath, filename = filename)
+        file_table, file_table_header, p_key = get_file_table(dirpath = dirpath, filename = filename)
 
-        print(f"Created {filetoken} table at {datetime.now():%b %d %I:%M %p}")
-        # yield f"Updated available inventory for {filetoken} at {datetime.now():%b %d %I:%M %p}"
+        print(f"Created {filetoken} table at {datetime.now():%b %d %I:%M %p}/nHeader: {file_table_header['header_guess']}")
+        yield f"Created {filetoken} table at {datetime.now():%b %d %I:%M %p}"
+        yield f"Header: {file_table_header['header_guess']} \n From: {file_table_header['header_raw']}"
 
         # save a sqlalchemy ORM class for each dataframe - add column = id:int as primary key
-        status = save_class_in_session(df=file_table, class_name=filetoken)
+        status = save_class_in_session(df=file_table, class_name=filetoken, p_key=p_key)
 
         if status:
             print(f"Created ORM class and db table {filetoken}")
