@@ -7,14 +7,28 @@ from flask import Blueprint, request, Response, session
 from flask import current_app, jsonify, render_template, redirect, flash, url_for
 from flask_login import current_user
 
-# Create a Blueprint
-# bp = Blueprint('bp', __name__)
+# for drop box data access
+import os
+import base64
+import requests
+import dropbox
+APP_KEY = os.environ.get('DROPBOX_APP_KEY')
+APP_SECRET = os.environ.get('DROPBOX_APP_SECRET')
+REFRESH_TOKEN = os.environ.get('DROPBOX_REFRESH_TOKEN')
+
+# for more secure file handling
+from werkzeug.utils import secure_filename
+
+# for logging 
+import logging
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
 
 from app import db
 from app.init import bp 
 from app.models import User,  SessionData, UserData, ThreadComplete
 
-from .extract_table import get_filenames_in_directory, get_file_table, save_class_in_session
 from .extract_table import background_task, message_queue, Empty
 
 # refresh inventory is called from button event via javascript 
@@ -59,7 +73,7 @@ def index():
     # x = bp.template_folder   y = bp.root_path
      
     # dirpath = request.form['dirpath']
-    dirpath = 'pdffiles' # 2024-01-29 hardcode for testing 
+    dirpath = '../OrderForms' # 2024-01-29 hardcode for testing 
     
     # for sync testing 
     # results = save_all_file_tables_in_dir('../' + dirpath)
@@ -67,7 +81,7 @@ def index():
     # for streaming over message queue
     app = current_app._get_current_object()
     userid = current_user.id
-    threading.Thread(target=background_task, args=(app, '../' + dirpath, userid,)).start()
+    threading.Thread(target=background_task, args=(app, dirpath, userid,)).start()
 
     return jsonify(status="started")
 

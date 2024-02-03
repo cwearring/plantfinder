@@ -24,11 +24,15 @@ load_dotenv(os.path.join(basedir, '.env'))
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'you-will-never-guess'
  
+import requests
+import os
+import base64
+import logging
 
 def get_DropBox_AccessToken_from_RefreshToken():
     '''
     Get the auth token from a valid refresh token
-    '''
+
     # https://www.dropboxforum.com/t5/Dropbox-API-Support-Feedback/Get-refresh-token-from-access-token/m-p/596755/highlight/false#M27728
     # https://www.dropbox.com/developers/documentation/http/documentation#authorization 
     # https://www.dropbox.com/oauth2/authorize?client_id=j27yo01f5f8w304&response_type=code&token_access_type=offline
@@ -36,47 +40,54 @@ def get_DropBox_AccessToken_from_RefreshToken():
     # i have to get the access code dynamically from the refresh token
     # https://developers.dropbox.com/oidc-guide 
 
-    APP_KEY = os.environ.get('DROPBOX_APP_KEY') or 'nodropboxkey'
-    APP_SECRET = os.environ.get('DROPBOX_APP_SECRET') or 'nodropboxsecret'
-    BASIC_AUTH = base64.b64encode(f'{APP_KEY}:{APP_SECRET}'.encode())
+    This gets a refresh token if we pass a valid AUTHORIZATIONCODEHERE
+    We only need to do this once to get a persistent refresh token  
+    curl https://api.dropbox.com/oauth2/token \
+        -d code=AUTHORIZATIONCODEHERE \
+        -d grant_type=authorization_code \
+        -u APPKEYHERE:APPSECRETHERE​
 
-    # using the refresh token for now 
-    REFRESH_TOKEN = os.environ.get('DROPBOX_REFRESH_TOKEN') or 'nodropboxrefreshtoken'
-
+    This gets the authcode from the refresh token
+    curl https://api.dropbox.com/oauth2/token \
+        -d refresh_token=REFRESHTOKENHERE \
+        -d grant_type=refresh_token \
+        -d client_id=APPKEYHERE \
+        -d client_secret=APPSECRETHERE
     '''
-        This gets a refresh token if we pass a valid AUTHORIZATIONCODEHERE
-        We only need to do this once to get a persistent refresh token  
-        curl https://api.dropbox.com/oauth2/token \
-            -d code=AUTHORIZATIONCODEHERE \
-            -d grant_type=authorization_code \
-            -u APPKEYHERE:APPSECRETHERE​
-    '''
 
-    '''  
-        This gets the authcode from the refresh token
-        curl https://api.dropbox.com/oauth2/token \
-            -d refresh_token=REFRESHTOKENHERE \
-            -d grant_type=refresh_token \
-            -d client_id=APPKEYHERE \
-            -d client_secret=APPSECRETHERE
-    '''
-    
-    data = {
-            "refresh_token":REFRESH_TOKEN,
-            "grant_type":"refresh_token",
-            "client_id":APP_KEY,
-            "client_secret":APP_SECRET
-    }
+    try:
+        APP_KEY = os.environ.get('DROPBOX_APP_KEY')
+        APP_SECRET = os.environ.get('DROPBOX_APP_SECRET')
+        REFRESH_TOKEN = os.environ.get('DROPBOX_REFRESH_TOKEN')
 
-    # Use the refresh token to get a valid temp auth token
-    response = requests.post('https://api.dropboxapi.com/oauth2/token',
-                            data=data)
-    
-    if response.status_code == 200:
-        return(response.json()["access_token"])
-    else:
-        return(f"{response.status_code} error {response.text}")
-        #print(json.dumps(json.loads(response.text), indent=2))
+        if not all([APP_KEY, APP_SECRET, REFRESH_TOKEN]):
+            logging.error("Missing required Dropbox configuration.")
+            return "Error: Missing configuration."
+
+        BASIC_AUTH = base64.b64encode(f'{APP_KEY}:{APP_SECRET}'.encode()).decode()
+
+        data = {
+            "refresh_token": REFRESH_TOKEN,
+            "grant_type": "refresh_token",
+            "client_id": APP_KEY,
+            "client_secret": APP_SECRET
+        }
+
+        response = requests.post('https://api.dropboxapi.com/oauth2/token', data=data)
+
+        if response.status_code == 200:
+            return response.json().get("access_token")
+        else:
+            logging.error(f"Dropbox API Error: {response.status_code} - {response.text}")
+            return "Error: Failed to retrieve access token."
+
+    except requests.RequestException as e:
+        logging.error(f"Request Exception: {e}")
+        return "Error: Network error occurred."
+
+    except Exception as e:
+        logging.error(f"General Exception: {e}")
+        return "Error: An unexpected error occurred."
 
 def isFileDropBox(dropboxMeta):
     return isinstance(dropboxMeta,dropbox.files.FileMetadata)
@@ -248,4 +259,31 @@ def initSearchDropBox(onlySubdir:list):
         initComplete = "Need a dropbox token and root directory for suppliers' files"
 
     return (initComplete)
+
+def XXXget_DropBox_AccessToken_from_RefreshToken():
+
+    APP_KEY = os.environ.get('DROPBOX_APP_KEY') or 'nodropboxkey'
+    APP_SECRET = os.environ.get('DROPBOX_APP_SECRET') or 'nodropboxsecret'
+    BASIC_AUTH = base64.b64encode(f'{APP_KEY}:{APP_SECRET}'.encode())
+
+    # using the refresh token for now 
+    REFRESH_TOKEN = os.environ.get('DROPBOX_REFRESH_TOKEN') or 'nodropboxrefreshtoken'
+
+    
+    data = {
+            "refresh_token":REFRESH_TOKEN,
+            "grant_type":"refresh_token",
+            "client_id":APP_KEY,
+            "client_secret":APP_SECRET
+    }
+
+    # Use the refresh token to get a valid temp auth token
+    response = requests.post('https://api.dropboxapi.com/oauth2/token',
+                            data=data)
+    
+    if response.status_code == 200:
+        return(response.json()["access_token"])
+    else:
+        return(f"{response.status_code} error {response.text}")
+        #print(json.dumps(json.loads(response.text), indent=2))
 

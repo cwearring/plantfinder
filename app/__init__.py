@@ -21,6 +21,10 @@ login_manager.session_protection = "strong"
 login_manager.login_view = "auth.login"
 login_manager.login_message_category = "info"
 
+import logging
+from logging.handlers import RotatingFileHandler
+import os
+
 # Function to get the absolute template folder path - for debugging
 def get_absolute_template_folder(bp):
     return bp.jinja_loader.searchpath[0] if bp.jinja_loader.searchpath else None
@@ -56,9 +60,10 @@ def create_app():
     # Extensions Initialization
     login_manager.init_app(app)
     db.init_app(app)
+    with app.app_context():
+        db.create_all()
     migrate.init_app(app, db)
     bcrypt.init_app(app)
-    # server_session = Session()
 
     from app.auth import bp as auth_bp
     app.register_blueprint(auth_bp, url_prefix='/auth')
@@ -78,40 +83,21 @@ def create_app():
     x3 = get_absolute_template_folder(search_bp)
     jnk=0
 
-    return app
+    # Set up logging
+    if not app.debug:
+        # Set log level
+        log_level = logging.INFO
 
+        # Create a file handler
+        log_file = 'application.log'
+        file_handler = RotatingFileHandler(log_file, maxBytes=10240, backupCount=10)
+        file_handler.setLevel(log_level)
 
-def create_app_planttableextract():
-    app = Flask(__name__)
+        # Create a logging format
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
 
-    # Flask-Session Configuration
-    # app.config['SESSION_TYPE'] = 'filesystem'
-    app.config['SESSION_TYPE'] = 'sqlalchemy'
-    app.config['SESSION_SQLALCHEMY'] = db  
-    app.config['SESSION_SQLALCHEMY_TABLE'] = 'sessions'
-    app.config["SESSION_PERMANENT"] = True
-    app.config['SESSION_USE_SIGNER'] = True
-    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1) 
-    app.config['SESSION_COOKIE_SECURE'] = True
-    app.secret_key = 'secret-key'
-
-    # Flask-SQLAlchemy and DataStore Configuration
-    # local docker postgres image - no vector store as of 2024-01-23
-    SQLALCHEMY_DATABASE_URI ='postgresql+psycopg2://postgres:cwearring@localhost:5432/postgres'
-    app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
-
-    # Other Flask App Configurations
-    app.config['EXPLAIN_TEMPLATE_LOADING'] = True
-    app.config['TESTING'] = True
-    
-    from . import routes
-    # from .routes import bp
-    # app.register_blueprint(bp)
-
-    # Extensions Initialization
-    db.init_app(app)
-    with app.app_context():
-        db.create_all()
-    migrate.init_app(app, db)
-
+        # Add the handler to the logger
+        app.logger.addHandler(file_handler)
+        
     return app
