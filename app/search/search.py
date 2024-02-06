@@ -9,23 +9,63 @@ from flask_migrate import Migrate
 from flask_login import UserMixin,login_user,LoginManager,current_user,logout_user,login_required
 from sqlalchemy.exc import IntegrityError,DataError,DatabaseError,InterfaceError,InvalidRequestError
 from werkzeug.routing import BuildError
+import logging
 import base64
 import io
 import json
 import time 
-# import datetime
+import pandas as pd
 from datetime import datetime
 
 # import gunicorn 
 # from flask_session import Session
 # from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from app.models import User, db, SessionData, UserData
+from app.models import UserData, Tables, TableData
 from app.main.forms import search_form
 
 def findString(token:str, myString:str):
     tst = [n for n,x in enumerate( myString.split('\n')) if token.lower() in x.lower()]
     return(tst)
+
+def get_rows_as_list_of_lists(df, column_names):
+    # Ensure only the specified columns are selected, if they exist in the DataFrame
+    if not all(item in df.columns for item in column_names):
+        raise ValueError("One or more specified columns do not exist in the DataFrame")
+    
+    # Select specified columns and the first 5 rows
+    selected_data = df[column_names].head(5)
+    
+    # Convert to list of lists
+    rows_list = selected_data.values.tolist()
+    
+    return rows_list
+
+def model_to_dataframe(model):
+    """
+    Convert a Flask-SQLAlchemy model into a pandas DataFrame.
+
+    Parameters:
+    - model: The Flask-SQLAlchemy model class to convert.
+
+    Returns:
+    - A pandas DataFrame containing the data from the model's table.
+    """
+    # Query all data from the model's table
+    query_result = model.query.all()
+
+    # Convert the query result to a list of dictionaries
+    # Each dictionary corresponds to a row in the table
+    data = [row.__dict__ for row in query_result]
+
+    # Remove '_sa_instance_state' from dictionaries, which is added by SQLAlchemy
+    for row in data:
+        row.pop('_sa_instance_state', None)
+
+    # Convert the list of dictionaries to a DataFrame
+    df = pd.DataFrame(data)
+
+    return df
 
 def searchData(searchTerm:str, isHTML = True ):
     '''
@@ -37,12 +77,28 @@ def searchData(searchTerm:str, isHTML = True ):
     else:
         NL = '\r\n'
 
-    # retrieve the dataframe saved from initSearchDropBox()
+    # retrieve the user data
     myUserData = UserData.query.get(current_user.id)
-    dfDict = myUserData.data.get('dfDict')
-    
-    # decompose the search term and return the found text  
-    if searchTerm and dfDict:
+
+    # retrieve a list of tables 
+    my_tables = Tables.get_all_sorted()
+    # init output string 
+    theOutput = ""
+
+    for tbl in my_tables:
+        # retrieve the df
+        tbl_df = TableData.get_dataframe(tbl.table_name)
+        # retrieve the search cols 
+        tbl_search_cols = TableData.get_search_columns(tbl.table_name)
+        # get the first 5 rows to test 
+        tbl_search_test = get_rows_as_list_of_lists(tbl_df, tbl_search_cols)
+        # log results 
+        for t in tbl_search_test:
+            logging.info(t)
+            theOutput = theOutput + str(t) + NL 
+
+    # skip the old stuff
+    if searchTerm and False:
         searchStrings = [x.strip() for x in searchTerm.split(' and ')]
         
         # get a list of line numbers with a text string match and print them 
@@ -93,8 +149,5 @@ def searchData(searchTerm:str, isHTML = True ):
                 for myRow in tmpOutput:
                     theOutput += f"{NL}{myRow}"
             jnk = 0 
-    else:
-        theOutput = "No search term provided or dfDict not initialized"
 
     return(theOutput)
-

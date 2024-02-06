@@ -98,8 +98,178 @@ message_queue = Queue()
 
 # get functions and variables created by __init__.py
 from app import db, create_app
-from app.models import ThreadComplete, UserData, get_user_data
+from app.models import ThreadComplete, UserData, Tables, TableData
 
+# holding area for unused 
+def best_header_word_match(header_word):
+    # define a list of header words from the docs 
+    header_words = ['Product', 'Variety', 'Size', 'Colour', 'Order Qty', 'Cost', 'Description', 'Code', 'Name',\
+                'Category','Your Price', 'Price', 'Status', 'Zone', 'Catalog $', 'Pots/Tray', 'Amount',\
+                'WH', 'Botanical Name', 'E-LINE', 'Available','Order', 'Total', 'PIN', 'UPC','Latin Name',\
+                'Available Units','QTY', 'Notes','Avail QTY','Order Qty','Plant Name','Common Name','Sale Price',\
+                'Pot Size','List','Net','Comments','AVL','Sku','Case Qty','Packaging', "Pots Ordered", 'SIZE 1', 'SIZE 2']
+ # Initial check for null string
+    if not header_word:
+        return None
+    
+    # find the best match from header_words 
+    tmp = {n:SequenceMatcher(a=header_word.lower(), b=hd.lower()).ratio() for n,hd in enumerate(header_words)}
+    header_word_key = max(tmp, key=tmp.get)
+    match_value = tmp[header_word_key]
+    header_word_key = max(tmp, key=tmp.get)
+    match_header_word = header_words[header_word_key]
+
+    return match_header_word
+
+def generate_hash(text):
+    hash_object = hashlib.sha256(text.encode())
+    return hash_object.hexdigest()
+
+def string_to_list(string: str) -> List:
+    """
+    Converts a string representation of a list into an actual Python list object.
+
+    Parameters:
+    - string (str): A string that represents a list, e.g., "[1, 2, 3]".
+
+    Returns:
+    - List: The list object represented by the input string.
+
+    Raises:
+    - ValueError: If the input string does not represent a list or if there's an error
+      in converting the string to a list.
+    """
+    
+    try:
+        result = ast.literal_eval(string)
+    except (SyntaxError, ValueError) as e:
+        # Catching specific exceptions related to literal_eval failures
+        raise ValueError(f"Error converting string to list: {e}")
+    
+    if not isinstance(result, list):
+        raise ValueError("The evaluated expression is not a list")
+
+    return result
+
+def extract_text_within_brackets(input_string: str) -> List[str]:
+    """
+    Extracts and returns all text found within square brackets in a given string.
+
+    Parameters:
+    - input_string (str): The string from which to extract text within square brackets.
+
+    Returns:
+    - List[str]: A list of strings found within square brackets. If no text is found
+      within brackets, returns an empty list.
+
+    Examples:
+    >>> extract_text_within_brackets("Example [text] within [brackets].")
+    ['text', 'brackets']
+    >>> extract_text_within_brackets("No brackets here.")
+    []
+    """
+    
+    if not isinstance(input_string, str):
+        raise ValueError("Input must be a string.")
+    
+    # Define the regex pattern to find text within square brackets
+    pattern = r'\[(.*?)\]'
+
+    # Use re.findall() to find all occurrences in the string
+    matches = re.findall(pattern, input_string)
+
+    return matches
+
+def create_class_from_df(df, class_name, p_key):
+    '''
+    Dynamically create a SQLAlchemy class from a dataframe 
+    '''
+    try:
+        type_mapping = {
+            'int64': db.Integer,
+            'float64': db.Float,
+            'object': db.String  # Assuming all 'object' types in this DataFrame are strings
+        }
+
+        # attributes = {col: Column(type_mapping[str(df[col].dtype)]) for col in df.columns}
+
+        # Adding a primary key column
+        # attributes = {'id': Column(db.Integer, primary_key=True, autoincrement=True)}
+        attributes = {
+            '__tablename__': class_name.lower(),  # Table name, typically lowercase
+            p_key : Column(db.String(64), primary_key=True),
+            '__table_args__': {'extend_existing': True}  # Add this line
+        }
+
+        # Add columns from DataFrame
+        for col in [c for c in df.columns if c != p_key]:
+            attributes[col] = Column(type_mapping[str(df[col].dtype)])
+
+        return type(class_name, (db.Model,), attributes)
+
+    except Exception as e:
+        # Optionally, log the error here - extend_existing=True
+        # log.error(f"Error in save_class_in_session: {str(e)}")
+
+        # Raise an exception with a descriptive message
+        raise ValueError(f"An error occurred in create_class_from_df: {str(e)}")
+    
+def save_class_in_session(df, class_name, p_key):
+    '''
+        make a sqlalchemy ORM class for each dataframe - add column = id:int as primary key
+    '''
+    jnk=0 #     print(current_app.name)
+
+    """# save a sqlalchemy ORM class for each dataframe - add column = id:int as primary key
+    status = save_class_in_session(df=file_table, class_name=filetoken, p_key=p_key)
+
+    if status:
+        logging.info(f"Created ORM class and db table {filetoken}")
+        # yield f"Created ORM class and db table {filetoken} at {datetime.now():%b %d %I:%M %p}"
+        yield f"Updated {len(file_table)} rows for {file_data['filename']} at {datetime.now():%b %d %I:%M %p}"
+    else:
+        logging.info(f"Hit an error save_class_in_session for {file_data['filename']}")
+        yield f"Error in save_class_in_session() for {file_data['filename']}"
+    """
+    try:
+        #with current_app.app_context():
+        # Get an inspector object from the database connection
+        inspector = inspect(db.engine)
+
+        # Create ORM class from DataFrame
+        DynamicClass = \
+            create_class_from_df(df, class_name, p_key )
+
+        # Check if the table already exists to avoid overwriting
+        if not inspector.has_table(DynamicClass.__tablename__):
+                DynamicClass.__table__.create(bind=db.engine)
+
+        # Iterate over DataFrame rows
+        for _, row in df.iterrows():
+            # Create an instance of the ORM class
+            obj = DynamicClass(**row.to_dict())
+
+            # Add the instance to the session
+            db.session.merge(obj)
+            
+        # Commit the session to save changes to the database
+        db.session.commit()
+
+        return True
+    
+    except Exception as e:
+        # Optionally, log the error here
+        # log.error(f"Error in save_class_in_session: {str(e)}")
+
+        # Return a status indicating an error occurred and include error details
+        raise ValueError(f"An error occurred in save_class_in_session: {str(e)}")
+    
+        return {"status": "error", "message": str(e)}
+    
+    return 
+
+
+# start of useful functions 
 def allowed_file(filename):
     '''
     CHeck filename against allowed extensions 
@@ -109,9 +279,39 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def generate_hash(text):
-    hash_object = hashlib.sha256(text.encode())
-    return hash_object.hexdigest()
+def most_frequent_integer(int_list: List[int]) -> Optional[int]:
+    """
+    Finds the most frequently occurring integer in a list.
+    
+    Parameters:
+    - int_list (List[int]): A list of integers to analyze.
+    
+    Returns:
+    - Optional[int]: The integer that appears most frequently in the list. If there are multiple integers
+      with the same highest frequency, one of them will be returned. Returns None if the list is empty
+      or contains no integers.
+    
+    Raises:
+    - ValueError: If the input list contains non-integer elements.
+    - ValueError: If the input is not a list.
+    """
+    
+    if not isinstance(int_list, list):
+        raise ValueError("Input must be a list.")
+    
+    if len(int_list) == 0:
+        return None  # Or raise an exception, depending on desired behavior
+    
+    if not all(isinstance(x, int) for x in int_list):
+        raise ValueError("The list must contain only integers.")
+
+    frequency = {}
+    for num in int_list:
+        frequency[num] = frequency.get(num, 0) + 1
+
+    most_frequent = max(frequency, key=frequency.get, default=None)
+
+    return most_frequent
 
 def is_file_dropbox(dropboxMeta):
     '''
@@ -119,6 +319,27 @@ def is_file_dropbox(dropboxMeta):
     Returns True if object is file, False otherwise
     '''
     return isinstance(dropboxMeta,dropbox.files.FileMetadata)
+
+def parse_fullfilename(full_filename:str = None):
+    '''
+    Parse a full file URI into components
+    : returns a dictionary 
+        'fullfilename': full_filename,
+        'dirpath':dirpath, 
+        'filename':filename, 
+        'filetype':filetype,
+        'vendor':vendor
+    '''
+    try:
+        # get the filename and directory path and file type
+        filetype = secure_filename(full_filename).split('.')[-1]
+        filename = full_filename.split('/')[-1]
+        dirpath = '/'.join(full_filename.split('/')[0:-1])    
+        vendor = dirpath.split('/')[-1]
+        return {'fullfilename': full_filename,'dirpath':dirpath, 
+                'filename':filename, 'filetype':filetype, 'vendor':vendor }
+    except:
+        return {'fullfilename':None,'dirpath':None, 'filename':None, 'filetype':None }
 
 def get_dropbox_accesstoken_from_refreshtoken(REFRESH_TOKEN, APP_KEY, APP_SECRET):
     '''
@@ -227,7 +448,7 @@ def get_filenames_in_directory(top_dir):
     def walk_dir_recursive(current_dir):
         try:
             for entry in os.scandir(current_dir):
-                if entry.is_file():
+                if entry.is_file() and entry.name[0:2] != '~$':
                     filesFound[entry.path] = entry.path
                     #filenames.append(entry.path)
                 elif entry.is_dir():
@@ -243,96 +464,8 @@ def get_filenames_in_directory(top_dir):
             logging.error(f"Error accessing Dropbox: {e}")
 
     walk_dir_recursive(top_dir)
+
     return filesFound
-
-def most_frequent_integer(int_list: List[int]) -> Optional[int]:
-    """
-    Finds the most frequently occurring integer in a list.
-    
-    Parameters:
-    - int_list (List[int]): A list of integers to analyze.
-    
-    Returns:
-    - Optional[int]: The integer that appears most frequently in the list. If there are multiple integers
-      with the same highest frequency, one of them will be returned. Returns None if the list is empty
-      or contains no integers.
-    
-    Raises:
-    - ValueError: If the input list contains non-integer elements.
-    - ValueError: If the input is not a list.
-    """
-    
-    if not isinstance(int_list, list):
-        raise ValueError("Input must be a list.")
-    
-    if len(int_list) == 0:
-        return None  # Or raise an exception, depending on desired behavior
-    
-    if not all(isinstance(x, int) for x in int_list):
-        raise ValueError("The list must contain only integers.")
-
-    frequency = {}
-    for num in int_list:
-        frequency[num] = frequency.get(num, 0) + 1
-
-    most_frequent = max(frequency, key=frequency.get, default=None)
-
-    return most_frequent
-
-def string_to_list(string: str) -> List:
-    """
-    Converts a string representation of a list into an actual Python list object.
-
-    Parameters:
-    - string (str): A string that represents a list, e.g., "[1, 2, 3]".
-
-    Returns:
-    - List: The list object represented by the input string.
-
-    Raises:
-    - ValueError: If the input string does not represent a list or if there's an error
-      in converting the string to a list.
-    """
-    
-    try:
-        result = ast.literal_eval(string)
-    except (SyntaxError, ValueError) as e:
-        # Catching specific exceptions related to literal_eval failures
-        raise ValueError(f"Error converting string to list: {e}")
-    
-    if not isinstance(result, list):
-        raise ValueError("The evaluated expression is not a list")
-
-    return result
-
-def extract_text_within_brackets(input_string: str) -> List[str]:
-    """
-    Extracts and returns all text found within square brackets in a given string.
-
-    Parameters:
-    - input_string (str): The string from which to extract text within square brackets.
-
-    Returns:
-    - List[str]: A list of strings found within square brackets. If no text is found
-      within brackets, returns an empty list.
-
-    Examples:
-    >>> extract_text_within_brackets("Example [text] within [brackets].")
-    ['text', 'brackets']
-    >>> extract_text_within_brackets("No brackets here.")
-    []
-    """
-    
-    if not isinstance(input_string, str):
-        raise ValueError("Input must be a string.")
-    
-    # Define the regex pattern to find text within square brackets
-    pattern = r'\[(.*?)\]'
-
-    # Use re.findall() to find all occurrences in the string
-    matches = re.findall(pattern, input_string)
-
-    return matches
 
 def get_firstpage_tables_as_list(doc=None):
     '''
@@ -363,20 +496,6 @@ def get_firstpage_tables_as_list(doc=None):
 
     return tbl_out, col_count, table_strategy, tbls
 
-def best_header_word_match(header_word, header_words):
-    # Initial check for null string
-    if not header_word:
-        return None
-    
-    # find the best match from header_words 
-    tmp = {n:SequenceMatcher(a=header_word.lower(), b=hd.lower()).ratio() for n,hd in enumerate(header_words)}
-    header_word_key = max(tmp, key=tmp.get)
-    match_value = tmp[header_word_key]
-    header_word_key = max(tmp, key=tmp.get)
-    match_header_word = header_words[header_word_key]
-
-    return match_header_word
-
 def get_bestguess_table_header(table_as_list = None):
     '''
     Uses embedding and LLM to guess the best header row
@@ -386,21 +505,23 @@ def get_bestguess_table_header(table_as_list = None):
         'header_raw' : header_raw,
         'p_key' : p_key, a variable with the name of the sqlalchemy table primary key 
         'header_guess' : header_guess
+        'plantname_in_header':plantname_in_header
     '''
     try:
         # get the best guess at the header row
         if len(table_as_list) > 0:
-            # guess the number of columns from the most frequent list length 
+
+            # guess the most likely number of columns from the most frequent table column count 
             numcols = most_frequent_integer([len(x) for x in table_as_list])
-            # find the first list with the right number of columns 
+
+            # find the first row with the most frequent number of columns- skip header stuff
             for n,row in enumerate(table_as_list):
                 if len(row) == numcols:
-                    header_rownum_guess = n
+                    table_row_start_guess = n
                     break
 
-            # create a list of text nodes with one node per row in tmp 
+            # create text nodes with one node per row in tmp 
             table_nodes = [TextNode(text=f"'{t}'", id_=n) for n,t in enumerate(table_as_list)]
-            # table_nodes = [TextNode(t, id_=n) for n,t in enumerate(tmp)]
             table_index = VectorStoreIndex(table_nodes)
 
             # create the query engine with custom config to return just one node
@@ -411,37 +532,54 @@ def get_bestguess_table_header(table_as_list = None):
                 alpha=None,
                 doc_ids=None,
             )
-            # get the gpt's best guess
-            oneshotprompt=f"Retrieve column headings as a python list for a product price sheet with {numcols} columns."
+            # request gpt's best guess at the row to use for table headings 
+            oneshotprompt=f"""Return {numcols}  table column headings from this 
+            price sheet of plants as a python list of length {numcols}.
 
-            multishotprompt=f"""Retrieve a column heading for a product price sheet with {numcols} columns.
             Return an existing row. Do not make up rows.
-
-            5 column example ['Name', 'Latin Name', 'Price', 'Available Qty', 'Order Qty']
-            8 column example [ "Product","SIZE1","SIZE2","PRICE", "AVL",  "COMMENTS", "ORDER", "Total"]
-            7 column example ["Category", "WH", "Code", "Botantical Name", "size", "Price", "Available"]
             """
+
+            multishotprompt=f"""Return {numcols} table column headings for this price sheet 
+            of plants with columns as a python list of length {numcols}. 
+
+            Example table column headings:
+            5 column  ['Name', 'Latin Name', 'Price', 'Available Qty', 'Order Qty']
+            8 column  [ "Product","SIZE1","SIZE2","PRICE", "AVL",  "COMMENTS", "ORDER", "Total"]
+            7 column  ["Category", "WH", "Code", "Botantical Name", "size", "Price", "Available"]
+
+            Return an existing row. Do not make up rows.
+            """
+            
             response = query_engine.query(multishotprompt)
 
             # get info from the header row
             header_rownum = int(response.source_nodes[0].id_)
             header_node_text = response.source_nodes[0].text
             header_raw = table_as_list[header_rownum]
-            p_key = 'id_hash'
             
-            # correct for failure of table header guess 
-            if len(header_raw) == numcols:
-                header_guess = [p_key] + [str(x).replace(' ','').replace('\n','_').replace('(','_').replace(')','')
-                                        for x in header_raw] + ['TableName', 'Text'] 
+            # correct for special case failure of table header guess 
+            # Total Hack - tried using the GPT but it failed miserably
+            if len(header_raw) == numcols: 
+                # we have the right number of columns
+                if header_rownum-table_row_start_guess < 10:
+                    # we did not pick a row deep in the table
+                    header_guess = ['TableName'] + [str(x).replace(' ','').replace('\n','_').replace('(','_').replace(')','')
+                                            for x in header_raw] + ['Text']
+                else:
+                    # we think the row is too far down in the table 
+                    header_guess = ['TableName'] + [f'col_{n}' for n in range(0,numcols)] + ['Text']
+                    header_rownum = table_row_start_guess # start of the frequently ocurring table width 
             else:
-                header_guess = [p_key] + [f'col_guess_{n}' for n in range(0,numcols)]+ ['TableName', 'Text']
+                # this excludes header guesses with a different number of headings 
+                header_guess = ['TableName'] + [f'col_{n}' for n in range(0,numcols)] + ['Text']
+                header_rownum = table_row_start_guess # start of the frequently ocurring table width 
 
             best_guess={    
             'header_rownum' : header_rownum,
-            'header_node_text' : header_node_text,
+            'header_node_text' : table_nodes[header_rownum].text,
             'header_raw' : header_raw,
-            'p_key' : p_key,
-            'header_guess' : header_guess
+            'header_guess' : header_guess,
+            'plantname_in_header': 'NotUsed'
             }
             
             return best_guess
@@ -451,6 +589,44 @@ def get_bestguess_table_header(table_as_list = None):
         return None
         pass
 
+def get_bestguess_table_search_columns(file_table, table_header):
+    # Use the table to guess which columns have plant names and descriptions
+    # submit with first few rows to guess columns having plant names or botantical names 
+    try:
+        # Generate the desired dictionary with keys as column names
+        col_dict = {
+            column_name: ', '.join(file_table[column_name].head(5).astype(str)) 
+            for column_name in file_table.columns if column_name not in
+            ['id_hash', 'TableName']
+        }
+
+        # create text nodes with one node per dict entry
+        dict_nodes = [TextNode(text=f"Dict Key: {str(k)} has values: {str(v)}", id_=k) 
+                        for k,v in col_dict.items()]
+        dict_index = VectorStoreIndex(dict_nodes)
+
+        # create the query engine 
+        query_engine = dict_index.as_query_engine(
+            similarity_top_k=3,
+            vector_store_query_mode="default", alpha=None, doc_ids=None )
+
+        # get the gpt's best guess at the columns containing plant names and descriptions
+        oneshotprompt=f"""You are an expert on garden center plants and their botantical names.
+        Return the dictionary keys that contain descriptions of plants or botanical names. 
+        Return only existing keys. Do not explain. Just return the key.
+        """
+
+        response = query_engine.query(oneshotprompt)
+        # df_search_cols = response.response.split(',')
+        df_search_cols = list(response.metadata.keys())
+        jnk = 0
+
+        return df_search_cols
+
+    except ValueError as e:
+        print(f"Error: {e}")
+        return None
+    
 def get_file_table_pdf(file_data:dict = None):
     '''
     Input: Directory path and filename 
@@ -464,12 +640,6 @@ def get_file_table_pdf(file_data:dict = None):
                     'header_node_text':header_node_text}
         name of table's primary key 
     '''
-    # define a list of header words from the docs 
-    header_words = ['Product', 'Variety', 'Size', 'Colour', 'Order Qty', 'Cost', 'Description', 'Code', 'Name',\
-                'Category','Your Price', 'Price', 'Status', 'Zone', 'Catalog $', 'Pots/Tray', 'Amount',\
-                'WH', 'Botanical Name', 'E-LINE', 'Available','Order', 'Total', 'PIN', 'UPC','Latin Name',\
-                'Available Units','QTY', 'Notes','Avail QTY','Order Qty','Plant Name','Common Name','Sale Price',\
-                'Pot Size','List','Net','Comments','AVL','Sku','Case Qty','Packaging', "Pots Ordered", 'SIZE 1', 'SIZE 2']
     try:
         # check if the file exists 
         full_filename = file_data.get('fullfilename')
@@ -483,15 +653,12 @@ def get_file_table_pdf(file_data:dict = None):
             # get a dict using GPT to guess the header row  
             best_guess = get_bestguess_table_header(tmp)
 
-            # save the file header info
-            p_key = best_guess.get('p_key')
-
-            # merge with the table from the first page 
-            table_data = [[generate_hash(f"{row}")] + row + 
-                          [file_data.get('filename'), f"{row}"] for row in tmp[best_guess.get('header_rownum')+1:]]
+            # merge header with the table from the first page 
+            table_data = [ [file_data.get('filename')] +  row + [f"{row}"] for row in tmp[best_guess.get('header_rownum')+1:] ]
             
             # add the tables from the rest of the pages using the same tbl_strategy 
-            for pagenum in range(1,doc.page_count):
+            # for pagenum in range(1,doc.page_count):
+            for pagenum in range(1,min(2,doc.page_count)):
                 logging.info(f"Processing page {pagenum} of {doc.page_count}")
 
                 tbls = doc[pagenum].find_tables(vertical_strategy=tbl_strategy, horizontal_strategy=tbl_strategy)
@@ -499,13 +666,12 @@ def get_file_table_pdf(file_data:dict = None):
                 tbl_page = [row for tbl in tbls.tables for row in tbl.extract() 
                             if row != best_guess.get('header_raw')]
                 # add rows with p_key of entire row as text and add filename and text string 
-                table_data.extend([[generate_hash(f"{row}")] + row + 
-                                   [file_data.get('filename'), f"{row}"] for row in tbl_page])
-                jnk = 0 
+                table_data.extend([ [file_data.get('filename')] + row + [f"{row}"] for row in tbl_page])
+                jnk = 0 # for debugging
 
             # create a pandas dataframe 
             df = pd.DataFrame(table_data, columns = best_guess.get('header_guess'))
-            df.set_index(p_key, inplace=True, drop=False)
+            # df.set_index('Table', inplace=True, drop=False)
 
             # save the file header info
             table_header = {'filename': file_data.get('filename'),
@@ -513,12 +679,13 @@ def get_file_table_pdf(file_data:dict = None):
                             'header_rownum':best_guess.get('header_rownum'),
                             'header_guess':best_guess.get('header_guess'), 
                             'header_raw':best_guess.get('header_raw'), 
-                            'header_node_text':best_guess.get('header_node_text')}
+                            'header_node_text':best_guess.get('header_node_text'),
+                            'plantname_in_header':best_guess.get('plantname_in_header')}
                         
-            return df, table_header, p_key
+            return df, table_header
         else:
             logging.error('No table found with fitz parse by grid or text ')
-            return None, None, None    
+            return None, None
     except:
             pass
 
@@ -556,11 +723,6 @@ def get_file_table_xls(file_data = None):
 
             # Convert row values to list as original text of row 
             row_text = df.apply(lambda row: str(list(row.values)), axis=1)
-            # Convert row values to list, make the list a string, and apply the hash function
-            hash_values = df.apply(lambda row: generate_hash(str(list(row.values))), axis=1)
-            # Insert the hash values as the first column of the DataFrame
-            df.insert(loc=0, column='hash_row', value=hash_values)
-            del hash_values
             # Add the filename and row as text to the DataFrame
             df['filename'] = file_data.get('filename')
             df['rowtext'] = row_text
@@ -571,125 +733,25 @@ def get_file_table_xls(file_data = None):
             df.fillna('empty', inplace=True)
             # ignore all the rows above the header row
             df = df.iloc[best_guess.get('header_rownum') + 1:]
- 
-            # save the file header info
-            p_key = best_guess.get('p_key')
 
             table_header = {'filename': file_data.get('filename'),
                             'numcols' : len(df.columns),
                             'header_rownum':best_guess.get('header_rownum'),
                             'header_guess':best_guess.get('header_guess'), 
                             'header_raw':best_guess.get('header_raw'), 
-                            'header_node_text':best_guess.get('header_node_text')}
-            return df, table_header, p_key
+                            'header_node_text':best_guess.get('header_node_text'),
+                            'plantname_in_header':best_guess.get('plantname_in_header')}
+            
+            return df, table_header
         else:
             print('No table found with fitz parse by grid or text ')
-            return None, None, None    
+            return None, None 
     except:
             pass    
-    
-def create_class_from_df(df, class_name, p_key):
-    '''
-    Dynamically create a SQLAlchemy class from a dataframe 
-    '''
-    try:
-        type_mapping = {
-            'int64': db.Integer,
-            'float64': db.Float,
-            'object': db.String  # Assuming all 'object' types in this DataFrame are strings
-        }
-
-        # attributes = {col: Column(type_mapping[str(df[col].dtype)]) for col in df.columns}
-
-        # Adding a primary key column
-        # attributes = {'id': Column(db.Integer, primary_key=True, autoincrement=True)}
-        attributes = {
-            '__tablename__': class_name.lower(),  # Table name, typically lowercase
-            p_key : Column(db.String(64), primary_key=True),
-            '__table_args__': {'extend_existing': True}  # Add this line
-        }
-
-        # Add columns from DataFrame
-        for col in [c for c in df.columns if c != p_key]:
-            attributes[col] = Column(type_mapping[str(df[col].dtype)])
-
-        return type(class_name, (db.Model,), attributes)
-
-    except Exception as e:
-        # Optionally, log the error here - extend_existing=True
-        # log.error(f"Error in save_class_in_session: {str(e)}")
-
-        # Raise an exception with a descriptive message
-        raise ValueError(f"An error occurred in create_class_from_df: {str(e)}")
-
-def save_class_in_session(df, class_name, p_key):
-    '''
-        make a sqlalchemy ORM class for each dataframe - add column = id:int as primary key
-    '''
-    jnk=0 #     print(current_app.name)
-
-    try:
-        #with current_app.app_context():
-        # Get an inspector object from the database connection
-        inspector = inspect(db.engine)
-
-        # Create ORM class from DataFrame
-        DynamicClass = \
-            create_class_from_df(df,
-                                 class_name,
-                                 p_key 
-                                 )
-
-        # Check if the table already exists to avoid overwriting
-        if not inspector.has_table(DynamicClass.__tablename__):
-                DynamicClass.__table__.create(bind=db.engine)
-
-        # Iterate over DataFrame rows
-        for _, row in df.iterrows():
-            # Create an instance of the ORM class
-            obj = DynamicClass(**row.to_dict())
-
-            # Add the instance to the session
-            db.session.merge(obj)
-            
-        # Commit the session to save changes to the database
-        db.session.commit()
-
-        return True
-    
-    except Exception as e:
-        # Optionally, log the error here
-        # log.error(f"Error in save_class_in_session: {str(e)}")
-
-        # Return a status indicating an error occurred and include error details
-        raise ValueError(f"An error occurred in save_class_in_session: {str(e)}")
-    
-        return {"status": "error", "message": str(e)}
-    
-    return 
-
-def parse_fullfilename(full_filename:str = None):
-    '''
-    Parse a full file URI into components
-    : returns a dictionary 
-        'fullfilename': full_filename,
-        'dirpath':dirpath, 
-        'filename':filename, 
-        'filetype':filetype 
-    '''
-    try:
-        # get the filename and directory path and file type
-        filetype = secure_filename(full_filename).split('.')[-1]
-        filename = full_filename.split('/')[-1]
-        dirpath = '/'.join(full_filename.split('/')[0:-1])    
-        return {'fullfilename': full_filename,'dirpath':dirpath, 'filename':filename, 'filetype':filetype }
-    except:
-        return {'fullfilename':None,'dirpath':None, 'filename':None, 'filetype':None }
 
 def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
     '''
-    Top level function to create sqlalchemy classes and save to db
-    Creates new db tables in sqlalchemy db for each unique file name
+    Top level function to create tables and save to db
     Automatically identifies unique table headings 
     '''
     load_dotenv()
@@ -726,42 +788,68 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
     # loop the files, and extract tables  
     # for filename in filenames:
     # for full_filename in [filenames[0]]:
-    for full_filename in filenames[4:]:
+    for full_filename in filenames:
         # get the dirpath, filename and file type
         file_data = parse_fullfilename(full_filename = full_filename)
 
         # yield the status
-        logging.info(f'Started processing {file_data["filename"]} at {datetime.now():%b %d %I:%M %p}')
+        logging.info(f'{file_data.get("vendor")}: {file_data.get("filename")} at {datetime.now():%b %d %I:%M %p}')
         yield ' '
-        yield f'Started processing {file_data["filename"]} at {datetime.now():%b %d %I:%M %p}'
+        yield f'{file_data.get("vendor")}: {file_data.get("filename")} at {datetime.now():%b %d %I:%M %p}'
 
         # create a well formed key to hash for db primary key 
-        filetoken = secure_filename(file_data["filename"]).split('.')[0]
+        if file_data.get("filename"):
+            filetoken = secure_filename(file_data.get("filename").split('.')[0])
+        else:
+            filetoken = None 
+            logging.info(f'Failed filetoken extract: {file_data.get("fullfilename")}')
 
         # branch pdf vs. xlsx files 
         if file_data.get('filetype').lower() == 'pdf':
             # extract tables as dataframes - for local files 
-            file_table, table_header, p_key = get_file_table_pdf(file_data)
+            file_table, table_header = get_file_table_pdf(file_data)
 
         elif file_data.get('filetype').lower() in ['xls', 'xlsx']:
             # extract tables as dataframes - for local files 
-            file_table, table_header, p_key = get_file_table_xls(file_data)
+            file_table, table_header = get_file_table_xls(file_data)
         
+        # guess the columns to search for plant names 
+        search_headers = get_bestguess_table_search_columns(file_table, table_header)
+
         # yield the status
         logging.info(f"Created {filetoken} table at {datetime.now():%b %d %I:%M %p}/nHeader: {table_header['header_guess']}")
         yield f"Created {filetoken} table at {datetime.now():%b %d %I:%M %p}"
-        yield f"Header: {table_header['header_guess']} \n From: {table_header['header_raw']}"
+        yield f"From: {table_header.get('header_raw')}"
+        yield f"Table Header Guess: {table_header.get('header_guess')}"
+        # yield f"Plantname_in_header: {table_header.get('plantname_in_header')}"
+        yield f"Search Header Guess: {search_headers} "
 
-        # save a sqlalchemy ORM class for each dataframe - add column = id:int as primary key
-        status = save_class_in_session(df=file_table, class_name=filetoken, p_key=p_key)
+        # Create an instance of the Tables class
+        new_table = Tables(vendor=file_data.get("vendor"), 
+                           file_name=file_data.get("filename"), 
+                           table_name=filetoken)
 
-        if status:
-            logging.info(f"Created ORM class and db table {filetoken}")
-            # yield f"Created ORM class and db table {filetoken} at {datetime.now():%b %d %I:%M %p}"
-            yield f"Updated {len(file_table)} rows for {file_data['filename']} at {datetime.now():%b %d %I:%M %p}"
-        else:
-            logging.info(f"Hit an error save_class_in_session for {file_data['filename']}")
-            yield f"Hit an error save_class_in_session for {file_data['filename']}"
+        # Add the new instance to the session
+        db.session.add(new_table)
+
+        # Convert the file_table (a daataframe) to a JSON string for storage
+        df_json = file_table.to_json(orient='split')  # 'split' orientation is often useful
+        '''
+        Description: the split option results in a JSON object containing separate entries 
+        for the indices (index), columns (columns), and data (data).
+        Use Case: It's useful when you want to preserve the structure of the DataFrame 
+        in a way that is easy to reconstruct into a DataFrame later. The 'split' format 
+        is also efficient in terms of space when the DataFrame has a uniform data type.
+        '''
+
+        # Create new TableData instance
+        new_table_data = TableData(table_name=filetoken, 
+                                   search_columns = search_headers,
+                                   row_count=len(file_table), 
+                                   df=df_json)
+        
+        # Add the new instance to the session and commit it to the database
+        db.session.add(new_table_data)
 
     # Commit the session to save changes to the database
     db.session.commit()
@@ -803,6 +891,7 @@ def background_task(app, dirpath, user_id):
 
         # Update the task as complete
         existing_thread = ThreadComplete.query.get(str(user_id))
+
         if existing_thread:
             existing_thread.task_complete = True
             

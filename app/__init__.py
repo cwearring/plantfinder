@@ -32,6 +32,10 @@ def get_absolute_template_folder(bp):
 def create_app():
     app = Flask(__name__)
 
+    # Set Werkzeug logger level to WARNING
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.WARNING)
+
     # Flask-Session Configuration
     app.secret_key = 'secret-key'
     app.config['SESSION_TYPE'] = 'sqlalchemy'

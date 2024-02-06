@@ -2,8 +2,8 @@ import uuid
 import threading
 from datetime import datetime 
 
-from flask import Blueprint, current_app, jsonify, session, render_template,redirect,flash,url_for
-from flask import Blueprint, request, Response, session
+from flask import Blueprint, current_app, jsonify, session
+from flask import Blueprint, request, Response
 from flask import current_app, jsonify, render_template, redirect, flash, url_for
 from flask_login import current_user
 
@@ -32,7 +32,7 @@ from app.models import User,  SessionData, UserData, ThreadComplete
 from .extract_table import background_task, message_queue, Empty
 
 # refresh inventory is called from button event via javascript 
-@bp.route('/init/', methods=('GET','POST'))
+@bp.route('/init/', methods=['GET','POST'])
 def init_data():
 
     jnk = 0
@@ -67,7 +67,7 @@ def init_data():
                    filesfound=init_status['filesfound'], 
                    filesloaded=init_status['filesloaded'])
 
-@bp.route("/init2/", methods=("GET", "POST"), strict_slashes=False)
+@bp.route("/init2/", methods=["GET", "POST"], strict_slashes=False)
 def index():
     # template_folder_value = get_absolute_template_folder(bp)
     # x = bp.template_folder   y = bp.root_path
@@ -92,17 +92,17 @@ def status():
     else:
         return redirect(url_for('auth.login'))
 
-@bp.route('/check_task',methods=("GET", "POST"), strict_slashes=False)
+@bp.route('/check_task',methods=["POST"], strict_slashes=False)
 def check_task():
-    # for streaming over message queue
-    app = current_app._get_current_object()
-    userid = current_user.id
+    data = request.get_json()
+    userid = data.get('user_id', None)  # Use provided user_id from request
 
     task_complete = ThreadComplete.is_task_complete(id=userid)
+
     # print(f"Task Complete = {task_complete} ")
     return jsonify({'task_complete': task_complete})
 
-@bp.route('/status_stream')
+@bp.route('/status_stream',methods=["GET", "POST"])
 def status_stream():
     def generate():
         while True:
