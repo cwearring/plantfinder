@@ -64,7 +64,7 @@ def index():
                             form=form,
                             title="Plantfinder Dev", 
                             template_folder='templates',
-                            result=result,
+                            tables=result,
                             search_term=search_term,
                             initStatusElement=initStatusElement
                             )

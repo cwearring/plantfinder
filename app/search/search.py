@@ -1,19 +1,10 @@
 # Functions to match text with previously established text dictionary 
-# Uses exact match with AND logic to match multiple terms
-# requires previously initialized structure called dfDIct retrieved from app session
+# 2024-02-07 Uses exact match with AND logic to match multiple terms
 
 from flask import Flask, render_template,redirect,flash,url_for,session,Blueprint,current_app,jsonify, request
-from flask_bcrypt import Bcrypt,generate_password_hash, check_password_hash
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-from flask_login import UserMixin,login_user,LoginManager,current_user,logout_user,login_required
-from sqlalchemy.exc import IntegrityError,DataError,DatabaseError,InterfaceError,InvalidRequestError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError,DataError,DatabaseError,InterfaceError,InvalidRequestError
 from werkzeug.routing import BuildError
 import logging
-import base64
-import io
-import json
-import time 
 import pandas as pd
 from datetime import datetime
 
@@ -72,30 +63,67 @@ def searchData(searchTerm:str, isHTML = True ):
     2023-10-07 changed the AND sepoarator from "+" to " and "
     '''
 
+    # Define a helper function - Adjusted approach to avoid the error:
+    def check_all_terms(row, search_terms):
+        return all(row.str.contains(term, case=False, na=False).any() for term in search_terms)
+    
     if isHTML:
         NL = '<br>'
     else:
         NL = '\r\n'
 
     # retrieve the user data
-    myUserData = UserData.query.get(current_user.id)
+    searchStrings = [x.strip() for x in searchTerm.split(' and ')]
+    # searchStrings = [x.strip() for x in searchTerm.split(' or ')]
 
     # retrieve a list of tables 
     my_tables = Tables.get_all_sorted()
-    # init output string 
-    theOutput = ""
+    
+    # init output as a dict of dicts 
+    # top key = name of table 
+    # sub keys are headings -> list of values for that heading 
+    theOutput = {}
+    try:
+        for tbl in my_tables:
+            logging.info(f"{tbl.table_name}")
+            # retrieve the df
+            tbl_df = TableData.get_dataframe(tbl.table_name)
+            tbl_df.fillna('Unknown', inplace=True)
 
-    for tbl in my_tables:
-        # retrieve the df
-        tbl_df = TableData.get_dataframe(tbl.table_name)
-        # retrieve the search cols 
-        tbl_search_cols = TableData.get_search_columns(tbl.table_name)
-        # get the first 5 rows to test 
-        tbl_search_test = get_rows_as_list_of_lists(tbl_df, tbl_search_cols)
-        # log results 
-        for t in tbl_search_test:
-            logging.info(t)
-            theOutput = theOutput + str(t) + NL 
+            # retrieve the search cols 
+            tbl_search_cols = TableData.get_search_columns(tbl.table_name)
+
+            # Filter rows where any of the specified columns contain any of the 'search_terms'
+            mask_any = tbl_df[tbl_search_cols].astype(str).apply(
+                lambda x: x.str.contains('|'.join(searchStrings), case=False, na=False)).any(axis=1)
+            filtered_df = tbl_df[mask_any]
+
+            # Create a mask where each search term is checked individually, and only rows where all terms are found are marked True
+
+            # Applying the helper function across the DataFrame:
+            mask_all = tbl_df[tbl_search_cols].astype(str).apply(
+                lambda x: check_all_terms(x, searchStrings),
+                axis=1
+            )
+            filtered_df = tbl_df[mask_all]
+
+            if len(filtered_df) > 0:
+                # Select columns not in the excluded list
+                included_columns = [col for col in filtered_df.columns if col.lower() 
+                                    not in ['tablename','text','order','total']]
+
+                # Create a new DataFrame excluding the specified columns
+                output_df = filtered_df[included_columns]
+                
+                # Transform the DataFrame into a dict of lists directly
+                dict_of_lists = output_df.to_dict(orient='list')
+
+                # populate the return structure with the filtered columns
+                theOutput[f"{tbl.vendor}:   {tbl.table_name}"]=dict_of_lists
+
+    except Exception as e:
+        logging.error(f"General Exception: {e}")
+        return "Error: An unexpected error occurred."
 
     # skip the old stuff
     if searchTerm and False:

@@ -71,7 +71,7 @@ from werkzeug.utils import secure_filename
 # for logging 
 import logging
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # LlmaIndex manages data and embeddings 
 from llama_index import ServiceContext, VectorStoreIndex
@@ -83,12 +83,12 @@ from llama_index.postprocessor import SimilarityPostprocessor
 from llama_index.schema import TextNode
 
 # modules to create an http server with API
-from flask import Flask, request, jsonify, current_app
-from flask_login import current_user
+from flask import Flask, jsonify
 from flask_sqlalchemy import SQLAlchemy
-
 # https://docs.sqlalchemy.org/en/20/core/engines.html
 from sqlalchemy import  Column, inspect
+from sqlalchemy.exc import SQLAlchemyError
+
 
 # queues for streaming updates during init 
 from queue import Queue, Empty
@@ -268,7 +268,6 @@ def save_class_in_session(df, class_name, p_key):
     
     return 
 
-
 # start of useful functions 
 def allowed_file(filename):
     '''
@@ -326,20 +325,23 @@ def parse_fullfilename(full_filename:str = None):
     : returns a dictionary 
         'fullfilename': full_filename,
         'dirpath':dirpath, 
+        'vendor':vendor,
         'filename':filename, 
-        'filetype':filetype,
-        'vendor':vendor
+        'filetoken': filetoken, # secure_filename(filename.split('.')[0])
+        'filetype':filetype
     '''
     try:
         # get the filename and directory path and file type
-        filetype = secure_filename(full_filename).split('.')[-1]
-        filename = full_filename.split('/')[-1]
         dirpath = '/'.join(full_filename.split('/')[0:-1])    
         vendor = dirpath.split('/')[-1]
-        return {'fullfilename': full_filename,'dirpath':dirpath, 
-                'filename':filename, 'filetype':filetype, 'vendor':vendor }
+        filetype = secure_filename(full_filename).split('.')[-1]
+        filename = full_filename.split('/')[-1]
+        filetoken = secure_filename(filename.split('.')[0])
+
+        return {'fullfilename': full_filename,'dirpath':dirpath,'filename':filename, 
+                'filetoken':filetoken, 'filetype':filetype, 'vendor':vendor }
     except:
-        return {'fullfilename':None,'dirpath':None, 'filename':None, 'filetype':None }
+        return {'fullfilename':None,'dirpath':None, 'filename':None, 'filetoken':None, 'filetype':None, 'vendor':None  }
 
 def get_dropbox_accesstoken_from_refreshtoken(REFRESH_TOKEN, APP_KEY, APP_SECRET):
     '''
@@ -589,7 +591,7 @@ def get_bestguess_table_header(table_as_list = None):
         return None
         pass
 
-def get_bestguess_table_search_columns(file_table, table_header):
+def get_bestguess_table_search_columns(file_table):
     # Use the table to guess which columns have plant names and descriptions
     # submit with first few rows to guess columns having plant names or botantical names 
     try:
@@ -658,7 +660,7 @@ def get_file_table_pdf(file_data:dict = None):
             
             # add the tables from the rest of the pages using the same tbl_strategy 
             # for pagenum in range(1,doc.page_count):
-            for pagenum in range(1,min(2,doc.page_count)):
+            for pagenum in range(1,min(200,doc.page_count)):
                 logging.info(f"Processing page {pagenum} of {doc.page_count}")
 
                 tbls = doc[pagenum].find_tables(vertical_strategy=tbl_strategy, horizontal_strategy=tbl_strategy)
@@ -713,20 +715,18 @@ def get_file_table_xls(file_data = None):
             df.dropna(axis=1, how='all', inplace=True)
             # remove rows with all null values 
             df.dropna(axis=0, how='all', inplace=True)
-           # get_bestguess_table_header returns a dictionary
+           # get_bestguess_table_header => returns a dictionary
             best_guess = get_bestguess_table_header(table_as_list=df.head(50).values.tolist())
-            
-            # the next commands insert the first column as a hashed id
-            # add the tablename and original row as list as text as new columns 
-            # replace the columns headings with best_guess and 
-            # drop rows above and including the header row
 
             # Convert row values to list as original text of row 
             row_text = df.apply(lambda row: str(list(row.values)), axis=1)
             # Add the filename and row as text to the DataFrame
-            df['filename'] = file_data.get('filename')
-            df['rowtext'] = row_text
+            df['rowtext'] = row_text # add as last row 
             del row_text
+
+            # Add the filename as first column to the DataFrame
+            df.insert(0, 'filename', file_data.get('filename'))
+
             # update the column names 
             df.columns = best_guess.get('header_guess')
             # replace all null values with a string 
@@ -749,157 +749,217 @@ def get_file_table_xls(file_data = None):
     except:
             pass    
 
+def save_table_to_session(file_data, file_table, search_headers):
+    """
+    Updates or creates entries in the Tables and TableData session based on provided data.
+    Does not commit objects -  db.session.commit() required 
+
+    Parameters:
+    - file_data: A dictionary containing 'filename', 'vendor', and 'filetoken' keys.
+    - file_table: A pandas DataFrame object that represents the table data to be saved.
+    - search_headers: A list of headers used for search indexing in the database.
+
+    Returns:
+    - A dictionary indicating the operation status for both 'table' and 'data' entries.
+      Returns None if an exception occurs during database operations.
+    """
+    
+    # Initialize a dictionary to keep track of the operation status
+    status = {'table': None, 'data': None}
+
+    try:
+        # Retrieve an existing Tables entry or None if it doesn't exist
+        existing_table = Tables.query.filter_by(
+            file_name=file_data.get("filename"),
+            vendor=file_data.get("vendor"),
+            table_name=file_data.get("filetoken")
+        ).first()
+
+        # Update existing Tables entry or create a new one
+        if existing_table:
+            existing_table.vendor = file_data.get("vendor")
+            existing_table.table_name = file_data.get("filetoken")
+            status['table'] = 'Updated'
+        else:
+            new_table = Tables(
+                vendor=file_data.get("vendor"), 
+                file_name=file_data.get("filename"), 
+                table_name=file_data.get("filetoken")
+            )
+            db.session.add(new_table)
+            status['table'] = 'New'
+
+        # Convert the file_table DataFrame to a JSON string for storage
+        df_json = file_table.to_json(orient='split')
+
+        # Retrieve an existing TableData entry or None if it doesn't exist
+        existing_table_data = TableData.query.filter_by(table_name=file_data.get("filetoken")).first()
+
+        # Update existing TableData entry or create a new one
+        if existing_table_data:
+            existing_table_data.search_columns = search_headers
+            existing_table_data.row_count = len(file_table)
+            existing_table_data.df = df_json
+            status['data'] = 'Updated'
+        else:
+            new_table_data = TableData(
+                table_name=file_data.get("filetoken"), 
+                search_columns=search_headers,
+                row_count=len(file_table), 
+                df=df_json
+            )
+            db.session.add(new_table_data)
+            status['data'] = 'New'
+
+    except SQLAlchemyError as e:
+        logging.error(f"Database operation failed: {e}")
+        db.session.rollback()
+        return None
+
+    return status
+
 def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
     '''
     Top level function to create tables and save to db
     Automatically identifies unique table headings 
     '''
-    load_dotenv()
-    # app = current_app #     print(current_app.name)
+    try:
+        load_dotenv()
 
-    # NOTE: do NOT deploy with your key hardcoded
-    tmp = os.getenv('OPENAI_API_KEY')
-    os.environ["OPENAI_API_KEY"] = tmp
-    # print(tmp)
+        # NOTE: do NOT deploy with your key hardcoded
+        tmp = os.getenv('OPENAI_API_KEY')
+        os.environ["OPENAI_API_KEY"] = tmp
 
-    # define embedding model 
-    service_context = ServiceContext.from_defaults(embed_model="local")
+        # define embedding model 
+        service_context = ServiceContext.from_defaults(embed_model="local")
 
-    # define the dicts to save headers and tables 
-    file_table_header = {}
-    file_table = {}
-
-    # get the files 
-    if use_dropbox:
-        dropbox_access_token = get_dropbox_accesstoken_from_refreshtoken
-        dbx = dropbox.Dropbox(dropbox_access_token)
-        dropbox_filenames = get_dropbox_filenames(dbx,startDir = '/Garden Centre Ordering Forms/OrderForms')
-        filenames = [f for f in dropbox_filenames.keys() if allowed_file(f.split('/')[-1])]
-    else:
-        os_filenames = get_filenames_in_directory(dirpath)
-        filenames = [f for f in os_filenames.keys() if allowed_file(f.split('/')[-1])]
-
-    # yield the status
-    logging.info (f'Found {len(filenames)} files in {dirpath} at {datetime.now():%b %d %I:%M %p}:')
-    yield f'Found {len(filenames)} files in {dirpath} at {datetime.now():%b %d %I:%M %p}:'
-    for tmp in filenames:
-        yield('  ' + str(tmp))
-
-    # loop the files, and extract tables  
-    # for filename in filenames:
-    # for full_filename in [filenames[0]]:
-    for full_filename in filenames:
-        # get the dirpath, filename and file type
-        file_data = parse_fullfilename(full_filename = full_filename)
+        # get the files 
+        if use_dropbox:
+            dropbox_access_token = get_dropbox_accesstoken_from_refreshtoken
+            dbx = dropbox.Dropbox(dropbox_access_token)
+            dropbox_filenames = get_dropbox_filenames(dbx,startDir = '/Garden Centre Ordering Forms/OrderForms')
+            filenames = [f for f in dropbox_filenames.keys() if allowed_file(f.split('/')[-1])]
+        else:
+            os_filenames = get_filenames_in_directory(dirpath)
+            filenames = [f for f in os_filenames.keys() if allowed_file(f.split('/')[-1])]
 
         # yield the status
-        logging.info(f'{file_data.get("vendor")}: {file_data.get("filename")} at {datetime.now():%b %d %I:%M %p}')
-        yield ' '
-        yield f'{file_data.get("vendor")}: {file_data.get("filename")} at {datetime.now():%b %d %I:%M %p}'
+        logging.info (f'Found {len(filenames)} files in {dirpath} at {datetime.now():%b %d %I:%M %p}:')
+        yield f'Found {len(filenames)} files in {dirpath} at {datetime.now():%b %d %I:%M %p}:'
+        for tmp in filenames:
+            yield('  ' + str(tmp))
 
-        # create a well formed key to hash for db primary key 
-        if file_data.get("filename"):
-            filetoken = secure_filename(file_data.get("filename").split('.')[0])
-        else:
-            filetoken = None 
-            logging.info(f'Failed filetoken extract: {file_data.get("fullfilename")}')
+        # loop the files, and extract tables  
+        # for filename in filenames:
+        # for full_filename in [filenames[0]]:
+        for full_filename in filenames:
+            # get the dirpath, filename and file type
+            file_data = parse_fullfilename(full_filename = full_filename)
 
-        # branch pdf vs. xlsx files 
-        if file_data.get('filetype').lower() == 'pdf':
-            # extract tables as dataframes - for local files 
-            file_table, table_header = get_file_table_pdf(file_data)
+            # yield the status
+            logging.info(f'{file_data.get("vendor")}: {file_data.get("filename")} at {datetime.now():%b %d %I:%M %p}')
+            yield ' '
+            yield f'{file_data.get("vendor")}: {file_data.get("filename")} at {datetime.now():%b %d %I:%M %p}'
 
-        elif file_data.get('filetype').lower() in ['xls', 'xlsx']:
-            # extract tables as dataframes - for local files 
-            file_table, table_header = get_file_table_xls(file_data)
-        
-        # guess the columns to search for plant names 
-        search_headers = get_bestguess_table_search_columns(file_table, table_header)
+            # create a well formed key to hash for db primary key 
+            if file_data.get("filename"):
+                filetoken = secure_filename(file_data.get("filename").split('.')[0])
+            else:
+                filetoken = None 
+                logging.info(f'Failed filetoken extract: {file_data.get("fullfilename")}')
 
-        # yield the status
-        logging.info(f"Created {filetoken} table at {datetime.now():%b %d %I:%M %p}/nHeader: {table_header['header_guess']}")
-        yield f"Created {filetoken} table at {datetime.now():%b %d %I:%M %p}"
-        yield f"From: {table_header.get('header_raw')}"
-        yield f"Table Header Guess: {table_header.get('header_guess')}"
-        # yield f"Plantname_in_header: {table_header.get('plantname_in_header')}"
-        yield f"Search Header Guess: {search_headers} "
+            # branch pdf vs. xlsx files 
+            if file_data.get('filetype').lower() == 'pdf':
+                # extract tables as dataframes - for local files 
+                file_table, table_header = get_file_table_pdf(file_data)
 
-        # Create an instance of the Tables class
-        new_table = Tables(vendor=file_data.get("vendor"), 
-                           file_name=file_data.get("filename"), 
-                           table_name=filetoken)
+            elif file_data.get('filetype').lower() in ['xls', 'xlsx']:
+                # extract tables as dataframes - for local files 
+                file_table, table_header = get_file_table_xls(file_data)
+            
+            # remove columns with all null values 
+            file_table.dropna(axis=1, how='all', inplace=True)
+            # remove rows with all null values 
+            file_table.dropna(axis=0, how='all', inplace=True)
 
-        # Add the new instance to the session
-        db.session.add(new_table)
+            # guess the columns to search for plant names 
+            search_headers = get_bestguess_table_search_columns(file_table)
 
-        # Convert the file_table (a daataframe) to a JSON string for storage
-        df_json = file_table.to_json(orient='split')  # 'split' orientation is often useful
-        '''
-        Description: the split option results in a JSON object containing separate entries 
-        for the indices (index), columns (columns), and data (data).
-        Use Case: It's useful when you want to preserve the structure of the DataFrame 
-        in a way that is easy to reconstruct into a DataFrame later. The 'split' format 
-        is also efficient in terms of space when the DataFrame has a uniform data type.
-        '''
+            # yield the status
+            logging.info(f"Created {filetoken} table at {datetime.now():%b %d %I:%M %p}/nHeader: {table_header['header_guess']}")
+            yield f"Created {filetoken} table at {datetime.now():%b %d %I:%M %p}"
+            yield f"From: {table_header.get('header_raw')}"
+            yield f"Table Header Guess: {table_header.get('header_guess')}"
+            yield f"Search Header Guess: {search_headers} "
 
-        # Create new TableData instance
-        new_table_data = TableData(table_name=filetoken, 
-                                   search_columns = search_headers,
-                                   row_count=len(file_table), 
-                                   df=df_json)
-        
-        # Add the new instance to the session and commit it to the database
-        db.session.add(new_table_data)
+            # save the table to the session 
+            status = save_table_to_session(file_data, file_table, search_headers )
 
-    # Commit the session to save changes to the database
-    db.session.commit()
-
-def background_task(app, dirpath, user_id):
-    with app.app_context():
-
-        # create the initial value as false or update existing 
-        check_thread = ThreadComplete.query.get(user_id)
-        if check_thread:
-            check_thread.task_complete = False
-            db.session.commit()
-        else:
-            new_thread = ThreadComplete(id=user_id, task_complete=False)
-            db.session.add(new_thread)
-            db.session.commit()
-
-        # initialize the list of updated files 
-        user = UserData.query.get(user_id)
-        tmptest = user.data
-        tmptest['update_status'] = []
-
-        # save the update status for each file 
-        for update in save_all_file_tables_in_dir(dirpath, use_dropbox=False):
-            print(f"background Update: {update}")
-            # Append the update message to the 'update_status' list
-            # user_data = UserData.query.get(user_id)
-            tmptest['update_status'].append(update)
-            message_queue.put(update)
-
-        # Save the updated user_data after the last update 
-        user = UserData.query.get(user_id)
-        user.data = tmptest 
-        db.session.merge(user)
+        # Commit the session to save changes to the database
         db.session.commit()
 
-        # Signal the completion of the task
-        message_queue.put(f"Completed Inventory Update at {datetime.now():%b %d %I:%M %p}")
+    except SQLAlchemyError as e:
+        logging.error(f"Database operation failed: {e}")
+        db.session.rollback()
 
-        # Update the task as complete
-        existing_thread = ThreadComplete.query.get(str(user_id))
+def background_task(app, dirpath, user_id):
+    """
+    Performs a background task to update file tables in a specified directory for a given user.
 
-        if existing_thread:
-            existing_thread.task_complete = True
-            
-            # save in the database with key = user_id
-            initStatus = f'Inventory last refreshed at {datetime.now():%b %d %I:%M %p}'
-            user_data = UserData(id=user_id, data={'status':initStatus})
-            db.session.merge(user_data)
+    Parameters:
+    - app: The Flask application context.
+    - dirpath: The directory path containing files to update.
+    - user_id: The ID of the user for whom the updates are performed.
+
+    The function updates the status of file processing in the database and logs progress.
+    """
+    with app.app_context():
+        try:
+            # Check or create task completion flag for the user
+            check_thread = ThreadComplete.query.get(user_id)
+            if check_thread:
+                check_thread.task_complete = False
+            else:
+                new_thread = ThreadComplete(id=user_id, task_complete=False)
+                db.session.add(new_thread)
             db.session.commit()
-            
-        message_queue.put(None)
 
+            # Initialize or update user data
+            user = UserData.query.get(user_id)
+            if not user:
+                logging.error(f"User {user_id} not found.")
+                return
+            user_data = user.data if user.data else {}
+            user_data['update_status'] = []
+
+            # Process each file in the directory
+            for update in save_all_file_tables_in_dir(dirpath, use_dropbox=False):
+                logging.info(f"Background Update: {update}")
+                user_data['update_status'].append(update)
+                message_queue.put(update)
+
+            # Save the updated user data
+            user.data = user_data
+            db.session.merge(user)
+            db.session.commit()
+
+            # Signal task completion
+            completion_message = f"Completed Inventory Update at {datetime.now():%b %d %I:%M %p}"
+            logging.info(completion_message)
+            message_queue.put(completion_message)
+
+            # Update task completion status
+            if check_thread:
+                check_thread.task_complete = True
+                initStatus = f'Inventory last refreshed at {datetime.now():%b %d %I:%M %p}'
+                user.data = {'status': initStatus}
+                db.session.merge(user)
+                db.session.commit()
+
+            message_queue.put(None)
+
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            logging.error(f"Database operation failed: {e}")
+        except Exception as e:
+            logging.error(f"Unexpected error: {e}")

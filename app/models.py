@@ -2,6 +2,7 @@ from app import db
 from flask_login import UserMixin
 import pandas as pd 
 from datetime import datetime 
+from io import StringIO
 
 class User(UserMixin, db.Model):
     __tablename__ = "user"
@@ -78,8 +79,11 @@ class TableData(db.Model):
         # Query the database for the record with the given table_name
         record = cls.query.filter_by(table_name=table_name).first()
         if record and record.df:
-            # Convert the JSONB stored data back into a pandas DataFrame
-            df = pd.read_json(record.df, orient='split')
+            # Wrap the JSON string in a StringIO object
+            json_str_io = StringIO(record.df)
+            
+            # Use pd.read_json to read from the StringIO object
+            df = pd.read_json(json_str_io, orient='split')
             return df
         else:
             return None    
@@ -92,3 +96,4 @@ class TableData(db.Model):
             return record.search_columns
         else:
             return None        
+        

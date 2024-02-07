@@ -1,91 +1,144 @@
 {% extends "base.html" %}
 {% block title%} {{ title }} {% endblock %}
 {% block content%}
+<!-- define some styles for the table display -->
+<style>
+    .small-text-table-header {
+        font-size: 0.7rem; /* Search results font size relative to base browser font */
+        font-weight: bold; /* Makes the text bold */
+    }
+
+    .small-text-table {
+        font-size: 0.6rem; /* Search results font size relative to base browser font */
+        width: 100%; /* Ensure the table spans the full width of its container */
+        border-collapse: collapse; /* Collapse borders so there's no space between them */
+    }
+    .small-text-table th,
+    .small-text-table td {
+        border: 1px solid #ddd; /* Add grid lines to each cell */
+        text-align: left; /* Left-justify text in each cell */
+        padding: 8px; /* Add some padding for text inside cells */
+    }
+
+    .centered-table-container {
+        display: flex;
+        justify-content: center;
+    }
+</style>
 
 <div class="container py-4 text-center">
 
     {% if current_user.is_authenticated %}
 
-    <h1>Welcome to Plantfinder </h1>
-    You are logged in as user: {{ current_user.username }}
-       
-    <a href="{{url_for('auth.logout')}}">Logout</a>
+        <h1>Welcome to Plantfinder </h1>
+        You are logged in as user: {{ current_user.username }}
+        
+        <a href="{{url_for('auth.logout')}}">Logout</a>
 
-    <!-- Row: Init Data Button -->
-    <div class="row mt-2">
-        <div class="col-lg-5 col-md-6 m-auto card p-4">
-            <button type="button" id="initButton" class="btn btn-primary">Refresh Supplier Inventories</button>
-        </div>
-    </div>
-
-    <!-- Row: Display init status -->
-    <div class="row mt-2" id="initRow">
-        <div class="col-lg-5 col-md-6 m-auto card p-4">
-            {% if initStatusElement %}
-                <p id="initStatusElement" class="text-left">{{ initStatusElement | safe }}</p>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- Row: Search Data  -->
-    <div class="row mt-4">
-        <div class="col-lg-5 col-md-6 m-auto card p-4">
-            <form action="{{ request.path }}" method="POST" class="card-body">
-                {{ form.csrf_token }}
-
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                <!-- Categories: success (green), info (blue), warning (yellow), danger (red) -->
-                {% if messages %}
-                {% for category, message in messages %}
-                <div class="alert alert-{{category}} alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-                {% endfor %}
-                {% endif %}
-                {% endwith %}
-
-                <div class="text-center">
-                    <h2>Search for plants by name...</h2>
-                </div>
-
-                <!-- Enter search text -->
-                <div class="form-group mb-3">
-                    {{ form.search_text(class_="form-control", placeholder="Enter search text")}}
-                </div>
-                {% for error in form.search_text.errors %}
-                <div class="alert alert-warning alert-dismissible fade show" role="alert">
-                    {{ error }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div> {% endfor%}
-
-                <!-- Submit search button -->
-                <div class="text-center">
-                    <div class="d-grid gap-2">
-                        <button type="submit" id="searchButton" class="btn btn-block btn-primary mb-3"> Submit Search </button>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Display Results box if not None   -->
-    {% if result %}
-        <div class="row mt-4 text-left">
-            <div class="col-lg-10 col-md-12 m-auto card p-4" style="text-align: left;">
-                <p class="text-left">{{ result | safe }}</p>
+        <!-- Row: Init Data Button -->
+        <div class="row mt-2">
+            <div class="col-lg-5 col-md-6 m-auto card p-4">
+                <button type="button" id="initButton" class="btn btn-primary">Refresh Supplier Inventories</button>
             </div>
         </div>
-    {% endif %}
-  
-    
-    {% else %}
 
-    <h1>  {{ title }}  </h1>
-    <h3>Search supplier inventories for the plants you need</h3>
-    <a href="{{url_for('auth.login')}}">Sign in/Sign Up</a>
-    
+        <!-- Row: Display init status -->
+        <div class="row mt-2" id="initRow">
+            <div class="col-lg-5 col-md-6 m-auto card p-4">
+                {% if initStatusElement %}
+                    <p id="initStatusElement" class="text-left">{{ initStatusElement | safe }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Row: Search Data  -->
+        <div class="row mt-4">
+            <div class="col-lg-5 col-md-6 m-auto card p-4">
+                <form action="{{ request.path }}" method="POST" class="card-body">
+                    {{ form.csrf_token }}
+
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                    <!-- Categories: success (green), info (blue), warning (yellow), danger (red) -->
+                    {% if messages %}
+                    {% for category, message in messages %}
+                    <div class="alert alert-{{category}} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+                    {% endwith %}
+
+                    <div class="text-center">
+                        <h2>Search for plants by name...</h2>
+                    </div>
+
+                    <!-- Enter search text -->
+                    <div class="form-group mb-3">
+                        {{ form.search_text(class_="form-control", placeholder="Enter search text")}}
+                    </div>
+                    {% for error in form.search_text.errors %}
+                    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                        {{ error }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div> {% endfor%}
+
+                    <!-- Submit search button -->
+                    <div class="text-center">
+                        <div class="d-grid gap-2">
+                            <button type="submit" id="searchButton" class="btn btn-block btn-primary mb-3"> Submit Search </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Display Results box if not None   -->
+        {% if tables %}
+            <div class="row mt-2" id="searchResults">
+                {% for table_name, table_data in tables.items() %}
+                    <div class="col-12 mt-4">
+                        <h5 class="text-center small-text-table-header">{{ table_name }}</h5>
+                        <div class="table-responsive centered-table-container">
+                            <table class="small-text-table">
+                                <!-- Table Header -->
+                                <thead>
+                                    <tr>
+                                        {% for header in table_data.keys() %}
+                                            <th>{{ header }}</th>
+                                        {% endfor %}
+                                    </tr>
+                                </thead>
+                                <!-- Table Body -->
+                                <tbody>
+                                    {% set row_count = (table_data.values()|list)[0]|length %}
+                                    {% for row_index in range(row_count) %}
+                                        <tr>
+                                            {% for header, column_list in table_data.items() %}
+                                                <td>{{ column_list[row_index] }}</td>
+                                            {% endfor %}
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="row mt-2" id="searchResultsRow">
+                <div class="col-lg-5 col-md-6 m-auto card p-4">
+                    <p class="text-left">No Search Results</p>
+                </div>
+            </div>
+        {% endif %}
+  
+    {% else %}
+        <h1>  {{ title }}  </h1>
+        <h3>Search supplier inventories for the plants you need</h3>
+        <a href="{{url_for('auth.login')}}">Sign in/Sign Up</a>
     {% endif %}
+
 </div>
 
 <!-- JavaScript to call the initData function -->
