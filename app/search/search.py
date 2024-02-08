@@ -60,7 +60,7 @@ def model_to_dataframe(model):
 
 def searchData(searchTerm:str, isHTML = True ):
     '''
-    2023-10-07 changed the AND sepoarator from "+" to " and "
+    2023-10-07 changed the AND separator from "+" to " and "
     '''
 
     # Define a helper function - Adjusted approach to avoid the error:
@@ -77,14 +77,20 @@ def searchData(searchTerm:str, isHTML = True ):
     # searchStrings = [x.strip() for x in searchTerm.split(' or ')]
 
     # retrieve a list of tables 
-    my_tables = Tables.get_all_sorted()
+    all_tables = Tables.get_all_sorted()
     
+    # delete the rows with the same vendor to retain just one with latest file_modifed 
+    # 2024-02-08 Have to add smarts to differentiate shrubs, perennials, general(annuals?)
+    all_vendors = Tables.get_unique_vendors()
+    most_recent_by_vendor = [Tables.get_most_recent_by_vendor(v) for v in all_vendors]
+
     # init output as a dict of dicts 
+    theOutput = {}
     # top key = name of table 
     # sub keys are headings -> list of values for that heading 
-    theOutput = {}
+
     try:
-        for tbl in my_tables:
+        for tbl in most_recent_by_vendor:
             logging.info(f"{tbl.table_name}")
             # retrieve the df
             tbl_df = TableData.get_dataframe(tbl.table_name)
@@ -99,7 +105,6 @@ def searchData(searchTerm:str, isHTML = True ):
             filtered_df = tbl_df[mask_any]
 
             # Create a mask where each search term is checked individually, and only rows where all terms are found are marked True
-
             # Applying the helper function across the DataFrame:
             mask_all = tbl_df[tbl_search_cols].astype(str).apply(
                 lambda x: check_all_terms(x, searchStrings),
@@ -114,7 +119,13 @@ def searchData(searchTerm:str, isHTML = True ):
 
                 # Create a new DataFrame excluding the specified columns
                 output_df = filtered_df[included_columns]
-                
+                # Remove any columns for which all row values have string = 'empty' or are empty
+                # Find columns where all values are 'empty'
+                columns_to_drop = [col for col in output_df.columns if (output_df[col] == 'empty').all()]
+
+                # Drop these columns from the DataFrame
+                output_df.drop(columns=columns_to_drop, inplace=True)
+
                 # Transform the DataFrame into a dict of lists directly
                 dict_of_lists = output_df.to_dict(orient='list')
 

@@ -51,7 +51,7 @@ from dotenv import load_dotenv
 # fitz is the PDF parser with table recognize capabilities 
 import fitz
 import pandas as pd
-from datetime import datetime 
+from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 from typing import List, Optional
 
@@ -269,6 +269,159 @@ def save_class_in_session(df, class_name, p_key):
     return 
 
 # start of useful functions 
+
+def convert_epoch_to_datetime(epoch_seconds):
+    """
+    Convert epoch seconds to a human-readable datetime string.
+    
+    Parameters:
+    - epoch_seconds: An integer or float representing the number of seconds since
+                     the Unix epoch (January 1, 1970, 00:00:00 UTC).
+    
+    Returns:
+    - A string representing the datetime in the format "Mon Jan 31 2024 7:34 PM".
+    
+    Raises:
+    - TypeError: If the input is not an integer or float.
+    - ValueError: If the epoch_seconds represent a date before the year 1900
+                  or if the input is out of the valid range for a datetime.
+    """
+    # Validate input type
+    if not isinstance(epoch_seconds, (int, float)):
+        raise TypeError("epoch_seconds must be an integer or float")
+    
+    try:
+        # Convert epoch time to a datetime object
+        dt = datetime.fromtimestamp(epoch_seconds)
+    except OverflowError as e:
+        # Handle overflow error if epoch_seconds is out of range
+        raise ValueError("epoch_seconds is out of valid range for a datetime") from e
+    except OSError as e:
+        # Handle OS errors, which might occur for extremely large or invalid values
+        raise ValueError("Invalid epoch_seconds value") from e
+    
+    # Safely format the datetime object to "Mon Jan 31 2024 7:34 PM"
+    formatted_time = dt.strftime('%a %b %d %Y %I:%M %p')
+    
+    return formatted_time
+
+def convert_datetime_str_to_epoch(datetime_str):
+    """
+    Converts a datetime string in the format "Mon Jan 31 2024 7:34 PM" to epoch seconds.
+
+    Parameters:
+    - datetime_str: A string representing the datetime in the specific format
+                    "%a %b %d %Y %I:%M %p", e.g., "Tue Mar 23 2021 04:50 PM".
+
+    Returns:
+    - An integer representing the number of seconds since the Unix epoch (January 1, 1970).
+
+    Raises:
+    - ValueError: If the datetime_str does not match the expected format or represents
+                  a date that cannot be converted to epoch seconds.
+    - TypeError: If the input is not a string.
+    """
+    # Validate input type
+    if not isinstance(datetime_str, str):
+        raise TypeError("datetime_str must be a string")
+
+    try:
+        # Attempt to parse the datetime string according to the specified format
+        dt = datetime.strptime(datetime_str, '%a %b %d %Y %I:%M %p')
+    except ValueError as e:
+        # Handle cases where the string does not match the expected format
+        raise ValueError("datetime_str does not match the expected format or is invalid") from e
+
+    # Convert the datetime object to epoch seconds and return
+    epoch_seconds = int(dt.timestamp())
+    return epoch_seconds
+
+def pdf_timestamp_to_readable(pdf_timestamp):
+    """
+    Converts a PDF-specific timestamp string to a human-readable datetime string.
+    
+    Parameters:
+    - pdf_timestamp: A string in the PDF-specific timestamp format "D:YYYYMMDDhhmmss+hh'mm'" 
+                     or "D:YYYYMMDDhhmmss-hh'mm'", where the timezone is optional.
+    
+    Returns:
+    - A string representing the datetime in the format "Mon Jan 31 2024 7:34 PM".
+    
+    Raises:
+    - ValueError: If the pdf_timestamp does not conform to the expected format or
+                  contains invalid date/time values.
+    - TypeError: If the input is not a string.
+    """
+    # Validate input type
+    if not isinstance(pdf_timestamp, str):
+        raise TypeError("pdf_timestamp must be a string")
+    
+    # Initial format check
+    if not pdf_timestamp.startswith('D:') or len(pdf_timestamp) < 16:
+        raise ValueError("pdf_timestamp does not conform to the expected format")
+
+    # Extract timestamp and timezone
+    ts = pdf_timestamp[2:16]  # YYYYMMDDhhmmss
+    tz = pdf_timestamp[16:]   # Time zone information
+
+    try:
+        # Convert the timestamp to a datetime object
+        dt = datetime.strptime(ts, '%Y%m%d%H%M%S')
+    except ValueError as e:
+        raise ValueError("Invalid timestamp format or value") from e
+
+    if tz:
+        try:
+            # Parse timezone information
+            sign = tz[0]
+            tz_hours = int(tz[1:3])
+            tz_minutes = int(tz[4:6])
+            delta = timedelta(hours=tz_hours, minutes=tz_minutes)
+
+            # Adjust datetime object according to the timezone
+            if sign == '+':
+                dt -= delta
+            elif sign == '-':
+                dt += delta
+        except (ValueError, IndexError) as e:
+            raise ValueError("Invalid timezone format or value") from e
+
+    # Format and return the datetime object
+    formatted_time = dt.strftime('%a %b %d %Y %I:%M %p')
+    return formatted_time
+
+def string_to_datetime(date_string):
+    """
+    Converts a string representing a datetime in the format "Mon Jan 31 2024 7:34 PM"
+    to a datetime object.
+    
+    Parameters:
+    - date_string: A string representing the datetime in the format
+                   "Mon Jan 31 2024 7:34 PM".
+    
+    Returns:
+    - A datetime object representing the specified date and time.
+    
+    Raises:
+    - ValueError: If the date_string does not match the expected format or
+                  represents an invalid date/time.
+    - TypeError: If the input is not a string.
+    """
+    # Validate input type
+    if not isinstance(date_string, str):
+        raise TypeError("date_string must be a string")
+
+    try:
+        # Convert the string to a datetime object
+        return datetime.strptime(date_string, '%a %b %d %Y %I:%M %p')
+    except ValueError as e:
+        raise ValueError("date_string does not match the expected format or is invalid") from e
+    
+def get_last_modified_datetime(fullfilename):
+    modt = os.stat(fullfilename).st_mtime
+    date_string = convert_epoch_to_datetime(modt)
+    return date_string
+
 def allowed_file(filename):
     '''
     CHeck filename against allowed extensions 
@@ -635,6 +788,7 @@ def get_file_table_pdf(file_data:dict = None):
     Output: Dict
         dataframe 
         table_header = {'filename': filename,
+                    'last_mod_datetime': last modified date-time as 'Mon Jan 31 2024 7:34 PM'
                     'numcols' : numcols,
                     'header_rownum':header_rownum,
                     'header_guess':header_guess, 
@@ -648,8 +802,18 @@ def get_file_table_pdf(file_data:dict = None):
 
         # get the best guess at the header row
         if len(full_filename) > 0:
+            # get file os last modified date time as string like 'Mon Jan 31 2024 7:34 PM'
+            last_modified = get_last_modified_datetime(full_filename) # not used 
+
             # PDF: read the doc and get the first page tables
             doc = fitz.open(full_filename)
+
+            # retrieve the metadate last modified date 
+            tmp = doc.metadata['modDate']
+            last_mod_datetime = pdf_timestamp_to_readable(tmp)
+            del tmp
+            logging.info(f"get_file_table_pdf OS mod = {last_modified} PDF mod = {last_mod_datetime} used :{last_mod_datetime}")
+            # get the merged tables from first page 
             tmp, numcols, tbl_strategy, tbls = get_firstpage_tables_as_list(doc)
 
             # get a dict using GPT to guess the header row  
@@ -677,6 +841,7 @@ def get_file_table_pdf(file_data:dict = None):
 
             # save the file header info
             table_header = {'filename': file_data.get('filename'),
+                            'last_mod_datetime':last_mod_datetime, # use the pdf metadata
                             'numcols' : len(df.columns),
                             'header_rownum':best_guess.get('header_rownum'),
                             'header_guess':best_guess.get('header_guess'), 
@@ -689,14 +854,16 @@ def get_file_table_pdf(file_data:dict = None):
             logging.error('No table found with fitz parse by grid or text ')
             return None, None
     except:
-            pass
-
+        logging.error('get_file_table_pdf error ')
+        return None, None
+    
 def get_file_table_xls(file_data = None):
     '''
     Input: Directory path and filename 
     Output: Dict
         dataframe 
         table_header = {'filename': filename,
+                    'last_mod_datetime': last modified date-time as 'Mon Jan 31 2024 7:34 PM'
                     'numcols' : numcols,
                     'header_rownum':header_rownum,
                     'header_guess':header_guess, 
@@ -710,6 +877,9 @@ def get_file_table_xls(file_data = None):
 
         # get the best guess at the header row
         if len(full_filename) > 0:
+            # get the last modified date time as string like 'Mon Jan 31 2024 7:34 PM'
+            last_modified = get_last_modified_datetime(full_filename)
+            # read file as dataframe 
             df = pd.read_excel( full_filename, header=None)
             # remove columns with all null values 
             df.dropna(axis=1, how='all', inplace=True)
@@ -735,6 +905,7 @@ def get_file_table_xls(file_data = None):
             df = df.iloc[best_guess.get('header_rownum') + 1:]
 
             table_header = {'filename': file_data.get('filename'),
+                            'last_mod_datetime':last_modified,
                             'numcols' : len(df.columns),
                             'header_rownum':best_guess.get('header_rownum'),
                             'header_guess':best_guess.get('header_guess'), 
@@ -749,14 +920,16 @@ def get_file_table_xls(file_data = None):
     except:
             pass    
 
-def save_table_to_session(file_data, file_table, search_headers):
+def save_table_to_session(file_data, file_table, table_header, search_headers):
     """
     Updates or creates entries in the Tables and TableData session based on provided data.
     Does not commit objects -  db.session.commit() required 
 
     Parameters:
-    - file_data: A dictionary containing 'filename', 'vendor', and 'filetoken' keys.
+    - file_data: A dictionary w keys 'fullfilename', 'dirpath', 'filename', 'filetoken', 'filetype', 'vendor'.
     - file_table: A pandas DataFrame object that represents the table data to be saved.
+    - file_header: A dictionary with keys 'filename', 'last_mod_datetime', 'numcols', 
+                    'header_rownum', 'header_guess', 'header_raw', 'header_node_text', 'plantname_in_header'
     - search_headers: A list of headers used for search indexing in the database.
 
     Returns:
@@ -770,20 +943,20 @@ def save_table_to_session(file_data, file_table, search_headers):
     try:
         # Retrieve an existing Tables entry or None if it doesn't exist
         existing_table = Tables.query.filter_by(
-            file_name=file_data.get("filename"),
             vendor=file_data.get("vendor"),
+            file_name=file_data.get("filename"),
             table_name=file_data.get("filetoken")
         ).first()
 
         # Update existing Tables entry or create a new one
         if existing_table:
-            existing_table.vendor = file_data.get("vendor")
-            existing_table.table_name = file_data.get("filetoken")
+            existing_table.file_last_modified = string_to_datetime(table_header.get("last_mod_datetime"))
             status['table'] = 'Updated'
         else:
             new_table = Tables(
                 vendor=file_data.get("vendor"), 
                 file_name=file_data.get("filename"), 
+                file_last_modified = string_to_datetime(table_header.get("last_mod_datetime")),
                 table_name=file_data.get("filetoken")
             )
             db.session.add(new_table)
@@ -814,7 +987,7 @@ def save_table_to_session(file_data, file_table, search_headers):
     except SQLAlchemyError as e:
         logging.error(f"Database operation failed: {e}")
         db.session.rollback()
-        return None
+        return {'table': None, 'data': None}
 
     return status
 
@@ -893,7 +1066,7 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
             yield f"Search Header Guess: {search_headers} "
 
             # save the table to the session 
-            status = save_table_to_session(file_data, file_table, search_headers )
+            status = save_table_to_session(file_data, file_table, table_header, search_headers )
 
         # Commit the session to save changes to the database
         db.session.commit()
