@@ -185,6 +185,20 @@
             });
         });
     });
+
+    document.addEventListener("DOMContentLoaded", function() {
+        // Assuming the search text input has a specific class or id, e.g., class="form-control"
+        var searchInput = document.querySelector('.form-control');
+
+        searchInput.addEventListener('keypress', function(e) {
+            // Check if the key pressed is the Enter key
+            if (e.key === 'Enter') {
+                e.preventDefault(); // Prevent default to stop any double-action
+                this.form.submit(); // Submit the form associated with the input
+                document.querySelector('form').submit();
+            }
+        });
+    });
 </script>
 
 

@@ -2,16 +2,12 @@ import uuid
 import threading
 from datetime import datetime 
 
-from flask import Blueprint, current_app, jsonify, session
 from flask import Blueprint, request, Response
-from flask import current_app, jsonify, render_template, redirect, flash, url_for
+from flask import session, current_app, jsonify, render_template, redirect, flash, url_for
 from flask_login import current_user
 
 # for drop box data access
 import os
-import base64
-import requests
-import dropbox
 APP_KEY = os.environ.get('DROPBOX_APP_KEY')
 APP_SECRET = os.environ.get('DROPBOX_APP_SECRET')
 REFRESH_TOKEN = os.environ.get('DROPBOX_REFRESH_TOKEN')
@@ -22,8 +18,7 @@ from werkzeug.utils import secure_filename
 # for logging 
 import logging
 # Configure logging
-logging.basicConfig(level=logging.INFO)
-
+# logging.basicConfig(level=logging.INFO)
 
 from app import db
 from app.init import bp 

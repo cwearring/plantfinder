@@ -164,6 +164,7 @@ cython_debug/
 # my older and hidden files 
 .ignoreolder/
 ./.gitignore
-migrations/*
+migrations/
 ./database.db
 XXX*
+logfiles/*

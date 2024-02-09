@@ -22,7 +22,7 @@ def load_user(user_id):
 @bp.before_request
 def session_handler():
     session.permanent = True
-    current_app.permanent_session_lifetime = timedelta(minutes=1)
+    current_app.permanent_session_lifetime = timedelta(minutes=10)
 
 @bp.route("/login/", methods=("GET", "POST"), strict_slashes=False)
 def login():

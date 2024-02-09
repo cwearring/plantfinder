@@ -118,7 +118,8 @@ def searchData(searchTerm:str, isHTML = True ):
                                     not in ['tablename','text','order','total']]
 
                 # Create a new DataFrame excluding the specified columns
-                output_df = filtered_df[included_columns]
+                output_df = filtered_df[included_columns].copy()
+                
                 # Remove any columns for which all row values have string = 'empty' or are empty
                 # Find columns where all values are 'empty'
                 columns_to_drop = [col for col in output_df.columns if (output_df[col] == 'empty').all()]

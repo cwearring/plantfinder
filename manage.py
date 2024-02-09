@@ -1,17 +1,16 @@
 import argparse
 
-def deploy(runinit = False):
+def deploy(dbinit = False):
 	"""Run deployment tasks."""
-	from app import create_app,db
-	from flask_migrate import upgrade,migrate,init,stamp
-	# from app.models import User, SessionData
+	from app import create_app, db
+	from flask_migrate import upgrade, migrate, init, stamp
 
 	app = create_app()
 	app.app_context().push()
 	db.create_all()
 
-	# init database first time
-	if runinit:
+	# init database first time 	print(f"init = {dbinit}")
+	if dbinit:
 		init()
 	# migrate database to latest revision
 	stamp()
@@ -27,6 +26,7 @@ def main():
 
 	# Parse the command-line arguments
 	args = parser.parse_args()
+	print(args)
 
 	# Check if the --deploy flag is provided
 	if args.dbinit:

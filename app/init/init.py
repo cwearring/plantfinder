@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 from flask_login import current_user
 
-from app.models import  db, UserData, SessionData
+from app.models import  db, UserData, User
 from os import listdir
 from os.path import isfile, join, getmtime
 

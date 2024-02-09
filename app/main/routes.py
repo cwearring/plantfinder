@@ -1,8 +1,9 @@
-from flask import Flask, session, render_template, request, Blueprint, flash, jsonify
+from flask import Flask, session, render_template,  Blueprint, flash, jsonify
+from flask_login import current_user
 from dotenv import load_dotenv
 import uuid
 
-from app import create_app, current_user, db
+from app import create_app, db
 from app.models import User,UserData,SessionData
 from app.search.search import searchData
 from app.init.init import initSearchDropBox
@@ -10,9 +11,15 @@ from app.main.forms import search_form, test_form, login_form
 
 load_dotenv()
 
-from app import get_absolute_template_folder
+# from app import get_absolute_template_folder
 
 bp = Blueprint('main', __name__, template_folder='templates')
+
+@bp.route('/health', methods=['GET'])
+def health_check():
+    # Perform internal health checks here (e.g., database connectivity)
+    # For simplicity, we're just returning a "healthy" status
+    return jsonify({"status": "healthy"}), 200
 
 @bp.route("/", methods=("GET", "POST"), strict_slashes=False)
 def index():
