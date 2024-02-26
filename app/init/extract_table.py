@@ -44,6 +44,7 @@ https://pymupdf.readthedocs.io/en/latest/recipes-text.html#how-to-analyze-font-c
 import os
 import ast
 import re
+import io
 import uuid
 import hashlib
 from dotenv import load_dotenv
@@ -88,7 +89,6 @@ from flask_sqlalchemy import SQLAlchemy
 # https://docs.sqlalchemy.org/en/20/core/engines.html
 from sqlalchemy import  Column, inspect
 from sqlalchemy.exc import SQLAlchemyError
-
 
 # queues for streaming updates during init 
 from queue import Queue, Empty
@@ -388,7 +388,7 @@ def pdf_timestamp_to_readable(pdf_timestamp):
 
     # Format and return the datetime object
     formatted_time = dt.strftime('%a %b %d %Y %I:%M %p')
-    return formatted_time
+    return dt, formatted_time
 
 def string_to_datetime(date_string):
     """
@@ -465,13 +465,6 @@ def most_frequent_integer(int_list: List[int]) -> Optional[int]:
 
     return most_frequent
 
-def is_file_dropbox(dropboxMeta):
-    '''
-    Check a drop box object id and test if it is a file
-    Returns True if object is file, False otherwise
-    '''
-    return isinstance(dropboxMeta,dropbox.files.FileMetadata)
-
 def parse_fullfilename(full_filename:str = None):
     '''
     Parse a full file URI into components
@@ -482,6 +475,8 @@ def parse_fullfilename(full_filename:str = None):
         'filename':filename, 
         'filetoken': filetoken, # secure_filename(filename.split('.')[0])
         'filetype':filetype
+        'dropboxdbx' : None (placeholder for dropbox dbx object)
+        'dropboxid': None (placeholder for dropboxID)
     '''
     try:
         # get the filename and directory path and file type
@@ -492,9 +487,12 @@ def parse_fullfilename(full_filename:str = None):
         filetoken = secure_filename(filename.split('.')[0])
 
         return {'fullfilename': full_filename,'dirpath':dirpath,'filename':filename, 
-                'filetoken':filetoken, 'filetype':filetype, 'vendor':vendor }
+                'filetoken':filetoken, 'filetype':filetype, 'vendor':vendor, 
+                'dropboxdbx':None, 'dropboxid':None }
     except:
-        return {'fullfilename':None,'dirpath':None, 'filename':None, 'filetoken':None, 'filetype':None, 'vendor':None  }
+        return {'fullfilename':None,'dirpath':None, 'filename':None, 
+                'filetoken':None, 'filetype':None, 'vendor':None, 
+                'dropboxdbx':None, 'dropboxid':None  }
 
 def get_dropbox_accesstoken_from_refreshtoken(REFRESH_TOKEN, APP_KEY, APP_SECRET):
     '''
@@ -553,6 +551,13 @@ def get_dropbox_accesstoken_from_refreshtoken(REFRESH_TOKEN, APP_KEY, APP_SECRET
         logging.error(f"General Exception: {e}")
         return "Error: An unexpected error occurred."
 
+def is_file_dropbox(dropboxMeta):
+    '''
+    Check a drop box object id and test if it is a file
+    Returns True if object is file, False otherwise
+    '''
+    return isinstance(dropboxMeta,dropbox.files.FileMetadata)
+
 def get_dropbox_filenames(dbx, startDir:str):
     """
     Walks down all subdirectories from a top-level directory and collects filenames.
@@ -568,10 +573,10 @@ def get_dropbox_filenames(dbx, startDir:str):
             entries = dbx.files_list_folder(current_dir).entries
             for entry in entries:
                 if is_file_dropbox(entry):
-                    logging.info(f"\nIn {f'/{current_dir}'} found File: {entry.name}")
+                    logging.info(f"In {f'/{current_dir}'} found File: {entry.name}")
                     filesFound[entry.path_lower] = entry
                 else: 
-                    logging.info(f"\nRecursing into {f'/{entry.path_lower}'} ")
+                    logging.info(f"Recursing into {f'/{entry.path_lower}'} ")
                     walk_dir_recursive(dbx, entry.path_lower)  # Recursion step
 
         except PermissionError:
@@ -802,38 +807,70 @@ def get_file_table_pdf(file_data:dict = None):
 
         # get the best guess at the header row
         if len(full_filename) > 0:
-            # get file os last modified date time as string like 'Mon Jan 31 2024 7:34 PM'
-            last_modified = get_last_modified_datetime(full_filename) # not used 
+            dbx_file = None
+            # branch based on the source of the files 
+            if file_data.get('dropboxdbx') and file_data.get('dropboxid'):
+                try:
+                    dbx = file_data.get('dropboxdbx')
+                    mfile = file_data.get('dropboxid')
+                    # retrieve modified datetime and object to read file 
+                    last_mod_datetime = mfile.client_modified
+                    last_mod_datetime_string = last_mod_datetime.strftime('%a %b %d %Y %I:%M %p')
+                    # download the dbx file object
+                    md,dbxfile = dbx.files_download(mfile.path_lower)
+                    # open a buffer to the dbx file 
+                    dbx_file = io.BytesIO(dbxfile.content) 
+                    # PDF: read the doc and get the first page tables
+                    doc = fitz.open(stream=dbx_file.read(), filetype="pdf")
+                except:
+                    logging.error(f'Error retrieving dropbox file {full_filename} ')
+                    return None, None
+            else:
+                # get file os last modified date time as string like 'Mon Jan 31 2024 7:34 PM'
+                # last_modified = get_last_modified_datetime(full_filename) 
+                # retrieve the metadate last modified date 
+                tmp = doc.metadata['modDate']
+                last_mod_datetime, last_mod_datetime_string =  pdf_timestamp_to_readable(tmp)
+                del tmp
+                # PDF: read the doc and get the first page tables
+                doc = fitz.open(full_filename)
 
-            # PDF: read the doc and get the first page tables
-            doc = fitz.open(full_filename)
+            logging.info(f"get_file_table_pdf OS mod = {last_mod_datetime} PDF mod = {last_mod_datetime_string} ")
 
-            # retrieve the metadate last modified date 
-            tmp = doc.metadata['modDate']
-            last_mod_datetime = pdf_timestamp_to_readable(tmp)
-            del tmp
-            logging.info(f"get_file_table_pdf OS mod = {last_modified} PDF mod = {last_mod_datetime} used :{last_mod_datetime}")
             # get the merged tables from first page 
             tmp, numcols, tbl_strategy, tbls = get_firstpage_tables_as_list(doc)
 
             # get a dict using GPT to guess the header row  
             best_guess = get_bestguess_table_header(tmp)
+            col_len_test = len(best_guess.get('header_guess'))-2
 
             # merge header with the table from the first page 
-            table_data = [ [file_data.get('filename')] +  row + [f"{row}"] for row in tmp[best_guess.get('header_rownum')+1:] ]
+            table_data = [ [file_data.get('filename')] +  row + [f"{row}"] 
+                          for row in tmp[best_guess.get('header_rownum')+1:] 
+                          if len(row) == col_len_test]
             
             # add the tables from the rest of the pages using the same tbl_strategy 
             # for pagenum in range(1,doc.page_count):
             for pagenum in range(1,min(200,doc.page_count)):
                 logging.info(f"Processing page {pagenum} of {doc.page_count}")
 
-                tbls = doc[pagenum].find_tables(vertical_strategy=tbl_strategy, horizontal_strategy=tbl_strategy)
+                tbls = doc[pagenum].find_tables(vertical_strategy=tbl_strategy, 
+                                                horizontal_strategy=tbl_strategy)
+                
                 # exclude rows identical to the header row 
                 tbl_page = [row for tbl in tbls.tables for row in tbl.extract() 
                             if row != best_guess.get('header_raw')]
-                # add rows with p_key of entire row as text and add filename and text string 
-                table_data.extend([ [file_data.get('filename')] + row + [f"{row}"] for row in tbl_page])
+                
+                # add col of row as text and add filename and text string 
+                table_data.extend([ [file_data.get('filename')] + row + [f"{row}"] for row in tbl_page 
+                                   if len(row) == col_len_test ])
+                
                 jnk = 0 # for debugging
+
+            # close the dropbox byteio 
+            if dbx_file:
+                dbx_file.close()
+                del dbx_file
 
             # create a pandas dataframe 
             df = pd.DataFrame(table_data, columns = best_guess.get('header_guess'))
@@ -841,7 +878,7 @@ def get_file_table_pdf(file_data:dict = None):
 
             # save the file header info
             table_header = {'filename': file_data.get('filename'),
-                            'last_mod_datetime':last_mod_datetime, # use the pdf metadata
+                            'last_mod_datetime':last_mod_datetime, 
                             'numcols' : len(df.columns),
                             'header_rownum':best_guess.get('header_rownum'),
                             'header_guess':best_guess.get('header_guess'), 
@@ -877,32 +914,53 @@ def get_file_table_xls(file_data = None):
 
         # get the best guess at the header row
         if len(full_filename) > 0:
-            # get the last modified date time as string like 'Mon Jan 31 2024 7:34 PM'
-            last_modified = get_last_modified_datetime(full_filename)
-            # read file as dataframe 
-            df = pd.read_excel( full_filename, header=None)
+            # branch based on the source of the files 
+            if file_data.get('dropboxdbx') and file_data.get('dropboxid'):
+                try:
+                    dbx = file_data.get('dropboxdbx')
+                    mfile = file_data.get('dropboxid')
+                    # retrieve modifed datetime and object to read file 
+                    last_modified = mfile.client_modified
+                    md,dbxfile = dbx.files_download(mfile.path_lower)
+                    # open a buffer to the dbx file 
+                    dbx_file = io.BytesIO(dbxfile.content) 
+                    # PDF: read the doc into a dataframe
+                    df = pd.read_excel( dbx_file, header=None)
+                    # Need a modificatiion to read multiple sheets from a workbook 
+                    dbx_file.close()
+                except:
+                    logging.error(f'Error retrieving dropbox file {full_filename} ')
+                    logging.error(f"DBX {type(file_data.get('dropboxdbx'))}" )
+                    logging.error(f"DBX fileid {type(file_data.get('dropboxid'))} '")
+                    return None, None
+            else:
+                # get the last modified date time as string like 'Mon Jan 31 2024 7:34 PM'
+                last_modified = get_last_modified_datetime(full_filename)
+                # read file as dataframe 
+                df = pd.read_excel( full_filename, header=None)
+
             # remove columns with all null values 
             df.dropna(axis=1, how='all', inplace=True)
             # remove rows with all null values 
             df.dropna(axis=0, how='all', inplace=True)
+
            # get_bestguess_table_header => returns a dictionary
             best_guess = get_bestguess_table_header(table_as_list=df.head(50).values.tolist())
 
             # Convert row values to list as original text of row 
             row_text = df.apply(lambda row: str(list(row.values)), axis=1)
             # Add the filename and row as text to the DataFrame
-            df['rowtext'] = row_text # add as last row 
+            df['rowtext'] = row_text # add as last column 
             del row_text
-
             # Add the filename as first column to the DataFrame
             df.insert(0, 'filename', file_data.get('filename'))
-
             # update the column names 
             df.columns = best_guess.get('header_guess')
+
             # replace all null values with a string 
             df.fillna('empty', inplace=True)
-            # ignore all the rows above the header row
-            df = df.iloc[best_guess.get('header_rownum') + 1:]
+            # drop all the rows above the header row
+            df = df.iloc[best_guess.get('header_rownum')+1:]
 
             table_header = {'filename': file_data.get('filename'),
                             'last_mod_datetime':last_modified,
@@ -950,13 +1008,13 @@ def save_table_to_session(file_data, file_table, table_header, search_headers):
 
         # Update existing Tables entry or create a new one
         if existing_table:
-            existing_table.file_last_modified = string_to_datetime(table_header.get("last_mod_datetime"))
+            existing_table.file_last_modified = table_header.get("last_mod_datetime")
             status['table'] = 'Updated'
         else:
             new_table = Tables(
                 vendor=file_data.get("vendor"), 
                 file_name=file_data.get("filename"), 
-                file_last_modified = string_to_datetime(table_header.get("last_mod_datetime")),
+                file_last_modified = table_header.get("last_mod_datetime"),
                 table_name=file_data.get("filetoken")
             )
             db.session.add(new_table)
@@ -1008,10 +1066,16 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
 
         # get the files 
         if use_dropbox:
-            dropbox_access_token = get_dropbox_accesstoken_from_refreshtoken
-            dbx = dropbox.Dropbox(dropbox_access_token)
-            dropbox_filenames = get_dropbox_filenames(dbx,startDir = '/Garden Centre Ordering Forms/OrderForms')
-            filenames = [f for f in dropbox_filenames.keys() if allowed_file(f.split('/')[-1])]
+            dbx_refresh = os.getenv('DROPBOX_REFRESH_TOKEN')
+            dbx_key = os.getenv('DROPBOX_APP_KEY')
+            dbx_secret = os.getenv('DROPBOX_APP_SECRET')
+            if (dbx_refresh and dbx_key and dbx_secret):
+                dropbox_access_token = get_dropbox_accesstoken_from_refreshtoken(dbx_refresh,dbx_key,dbx_secret)
+                dbx = dropbox.Dropbox(dropbox_access_token)
+                dropbox_filenames = get_dropbox_filenames(dbx,startDir = '/Garden Centre Ordering Forms/OrderForms')
+                filenames = [f for f in dropbox_filenames.keys() if allowed_file(f.split('/')[-1])]
+            else:
+                raise Exception('DROPBOX_REFRESH_TOKEN, DROPBOX_APP_KEY, DROPBOX_APP_SECRET not found')
         else:
             os_filenames = get_filenames_in_directory(dirpath)
             filenames = [f for f in os_filenames.keys() if allowed_file(f.split('/')[-1])]
@@ -1028,26 +1092,23 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
         for full_filename in filenames:
             # get the dirpath, filename and file type
             file_data = parse_fullfilename(full_filename = full_filename)
+            # get the dropbox keys if we obtained file from dropbox 
+            if use_dropbox:
+                file_data['dropboxdbx']=dbx
+                file_data['dropboxid']=dropbox_filenames.get(full_filename)
 
             # yield the status
             logging.info(f'{file_data.get("vendor")}: {file_data.get("filename")} at {datetime.now():%b %d %I:%M %p}')
             yield ' '
             yield f'{file_data.get("vendor")}: {file_data.get("filename")} at {datetime.now():%b %d %I:%M %p}'
 
-            # create a well formed key to hash for db primary key 
-            if file_data.get("filename"):
-                filetoken = secure_filename(file_data.get("filename").split('.')[0])
-            else:
-                filetoken = None 
-                logging.info(f'Failed filetoken extract: {file_data.get("fullfilename")}')
-
             # branch pdf vs. xlsx files 
             if file_data.get('filetype').lower() == 'pdf':
-                # extract tables as dataframes - for local files 
+                # extract tables as dataframes - 2024-02-26 file_data has fields for dropbox  
                 file_table, table_header = get_file_table_pdf(file_data)
 
             elif file_data.get('filetype').lower() in ['xls', 'xlsx']:
-                # extract tables as dataframes - for local files 
+                # extract tables as dataframes - 2024-02-26 file_data has fields for dropbox 
                 file_table, table_header = get_file_table_xls(file_data)
             
             # remove columns with all null values 
@@ -1059,8 +1120,8 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
             search_headers = get_bestguess_table_search_columns(file_table)
 
             # yield the status
-            logging.info(f"Created {filetoken} table at {datetime.now():%b %d %I:%M %p}/nHeader: {table_header['header_guess']}")
-            yield f"Created {filetoken} table at {datetime.now():%b %d %I:%M %p}"
+            logging.info(f"Created {file_data.get('filetoken')} table at {datetime.now():%b %d %I:%M %p}/nHeader: {table_header['header_guess']}")
+            yield f"Created {file_data.get('filetoken')} table at {datetime.now():%b %d %I:%M %p}"
             yield f"From: {table_header.get('header_raw')}"
             yield f"Table Header Guess: {table_header.get('header_guess')}"
             yield f"Search Header Guess: {search_headers} "
@@ -1075,7 +1136,7 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
         logging.error(f"Database operation failed: {e}")
         db.session.rollback()
 
-def background_task(app, dirpath, user_id):
+def background_task(app, dirpath, user_id, useDropbox=False):
     """
     Performs a background task to update file tables in a specified directory for a given user.
 
@@ -1083,6 +1144,7 @@ def background_task(app, dirpath, user_id):
     - app: The Flask application context.
     - dirpath: The directory path containing files to update.
     - user_id: The ID of the user for whom the updates are performed.
+    - isDropbox: Boolean indicating to read files from dropbox 
 
     The function updates the status of file processing in the database and logs progress.
     """
@@ -1106,7 +1168,7 @@ def background_task(app, dirpath, user_id):
             user_data['update_status'] = []
 
             # Process each file in the directory
-            for update in save_all_file_tables_in_dir(dirpath, use_dropbox=False):
+            for update in save_all_file_tables_in_dir(dirpath, use_dropbox=useDropbox):
                 logging.info(f"Background Update: {update}")
                 user_data['update_status'].append(update)
                 message_queue.put(update)

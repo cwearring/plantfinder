@@ -1,11 +1,18 @@
 import argparse
+import os
+from dotenv import load_dotenv
 
 def deploy(dbinit = False):
 	"""Run deployment tasks."""
 	from app import create_app, db
 	from flask_migrate import upgrade, migrate, init, stamp
 
-	app = create_app()
+	# get settings from the .env file 
+	load_dotenv()
+	my_config = os.getenv('CONFIG_LEVEL', None)
+	print(f"my_config in deploy = {my_config} - deploy")
+
+	app = create_app(config_name = my_config)
 	app.app_context().push()
 	db.create_all()
 

@@ -97,7 +97,7 @@ def get_onlyfilesDropBox(dbx, startDir:str, onlySubdir:list):
     filesFoundText = '' # text blob to save printed output 
 
     for entry in dbx.files_list_folder(f'/{startDir}').entries:
-        if isFileDropBox(entry):
+        if isFileDropBox(entry): # ignore files at the root directory
             # print(f"\nIn {f'/{startDir}'} found File: {entry.name}")
             # filesFoundText += f"In {f'/{startDir}'} found File: {entry.name}\n"
             # filesFound[entry.path_lower] = entry

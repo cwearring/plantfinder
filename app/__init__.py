@@ -2,7 +2,7 @@
 from flask import Flask
 from flask_bcrypt import Bcrypt
 from flask_sqlalchemy import SQLAlchemy
-from config import DevelopmentConfig, DockerLocalConfig, ProductionConfig, Config
+from config import DevelopmentConfig, DockerLocalConfig, AwsDevConfig, ProductionConfig, Config
 
 from flask_migrate import Migrate
 from flask_login import LoginManager
@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 load_dotenv()
 my_config = os.getenv('CONFIG_LEVEL', None)
 
-print(f"my_config = {my_config} - xxxxxxxxx")
+print(f"my_config __init__ = {my_config} - read in __init__ top level ")
 
 # Function to get the absolute template folder path - for debugging
 # def get_absolute_template_folder(bp):     return bp.jinja_loader.searchpath[0] if bp.jinja_loader.searchpath else None
@@ -42,11 +42,16 @@ def setup_logging(app):
 
 def create_app(config_name=None):
     app = Flask(__name__)
-       
+    # move this config inside the app factory function 
+    my_config = os.getenv('CONFIG_LEVEL', None)
+    print(f"config_name = {config_name} - read inside create_app - load_dotenv outside create_app()")
+      
     if config_name == 'dev':
         app.config.from_object(DevelopmentConfig)
     elif config_name == 'docker_local':
         app.config.from_object(DockerLocalConfig)
+    elif config_name == 'aws_dev1':  # test postgres db 'dev1'- public IG port 5432
+        app.config.from_object(AwsDevConfig)    
     elif config_name == 'prod':
         app.config.from_object(ProductionConfig)
     else:

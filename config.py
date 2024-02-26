@@ -28,6 +28,10 @@ class DockerLocalConfig(Config):
     DEBUG = True
     SQLALCHEMY_DATABASE_URI = 'postgresql+psycopg2://postgres:cwearring@mypostgres:5432/postgres'
 
+class AwsDevConfig(Config):
+    DEBUG = True
+    SQLALCHEMY_DATABASE_URI = 'postgresql+psycopg2://cwearring:pa$$w0rd@pg15-2.chieuysau35f.us-east-1.rds.amazonaws.com:5432/dev1'
+
 class DevelopmentConfig(Config):
     DEBUG = True
     SQLALCHEMY_DATABASE_URI = 'postgresql+psycopg2://postgres:cwearring@localhost:5432/postgres'

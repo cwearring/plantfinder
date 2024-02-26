@@ -1,0 +1,10 @@
+OrderForms/
+migrations/
+logfiles/
+instance/
+./database.db
+.gitignore 
+Dockerfile
+restart.sh
+wait_for_postgres.py
+my_modulefinder.py

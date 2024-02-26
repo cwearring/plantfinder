@@ -168,3 +168,6 @@ migrations/
 ./database.db
 XXX*
 logfiles/*
+OrderForms/
+*.pem
+**/.DS_Store
