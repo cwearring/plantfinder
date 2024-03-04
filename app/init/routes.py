@@ -28,43 +28,7 @@ from app.models import User,  SessionData, UserData, ThreadComplete
 
 from .extract_table import background_task, message_queue, Empty
 
-# refresh inventory is called from button event via javascript 
-@bp.route('/init/', methods=['GET','POST'])
-def init_data():
-
-    jnk = 0
-
-    # delayed import 
-    from app.init.init import initSearchDropBox
-
-    #manually restrict scope for testing
-    subDirFilter = ['Canadale', 'AVK']
-
-    # Check if session contains a unique identifier
-    if 'session_id' not in session:
-    # Generate a unique identifier and store it in the session
-        session['session_id'] = str(uuid.uuid4())
-    
-    # retrieve the local variable 
-    session_id = session['session_id']
-
-    # initialize the search data using an archived DropBox refresh token
-    init_status = initSearchDropBox(onlySubdir=subDirFilter)
-
-    # Store the session data in the database
-    session_data = SessionData(id=session_id, data={'init_status': init_status["status"],
-                                                    'filesfound': init_status['filesfound'],
-                                                    'filesloaded': init_status['filesloaded']})
-    db.session.merge(session_data)
-    db.session.commit()
-
-    # temp = jsonify(init_status=init_status)
-    # temp2 = init_status['status']
-    return jsonify(status=init_status["status"], 
-                   filesfound=init_status['filesfound'], 
-                   filesloaded=init_status['filesloaded'])
-
-@bp.route("/init2/", methods=["GET", "POST"], strict_slashes=False)
+@bp.route("/init", methods=["GET", "POST"], strict_slashes=False)
 def index():
     # template_folder_value = get_absolute_template_folder(bp)
     # x = bp.template_folder   y = bp.root_path

@@ -61,11 +61,6 @@ import base64
 import requests
 import dropbox
 
-# defined in .env file 
-APP_KEY = os.environ.get('DROPBOX_APP_KEY')
-APP_SECRET = os.environ.get('DROPBOX_APP_SECRET')
-REFRESH_TOKEN = os.environ.get('DROPBOX_REFRESH_TOKEN')
-
 # for more secure file handling
 from werkzeug.utils import secure_filename
 
@@ -667,6 +662,15 @@ def get_bestguess_table_header(table_as_list = None):
         'header_guess' : header_guess
         'plantname_in_header':plantname_in_header
     '''
+
+    if not isinstance(table_as_list, list) or not all(isinstance(row, list) for row in table_as_list):
+        logging.error("Invalid input: table_as_list must be a list of lists.")
+        return None
+    
+    if len(table_as_list) == 0:
+        logging.info("Empty table provided.")
+        return None
+
     try:
         # get the best guess at the header row
         if len(table_as_list) > 0:
@@ -674,14 +678,22 @@ def get_bestguess_table_header(table_as_list = None):
             # guess the most likely number of columns from the most frequent table column count 
             numcols = most_frequent_integer([len(x) for x in table_as_list])
 
-            # find the first row with the most frequent number of columns- skip header stuff
+            # find the first row populated with most frequent number of columns
+            table_row_start_guess = 0
             for n,row in enumerate(table_as_list):
-                if len(row) == numcols:
+                if len([r for r in row if r ==r]) >= int(numcols*7/10):
                     table_row_start_guess = n
                     break
 
+            if table_row_start_guess is None:
+                logging.error("No suitable row start guess found.")
+                return None
+
             # create text nodes with one node per row in tmp 
-            table_nodes = [TextNode(text=f"'{t}'", id_=n) for n,t in enumerate(table_as_list)]
+            table_nodes = [TextNode(text=f"'{t}'", id_=n) for n, t in enumerate(table_as_list) if isinstance(t, list)]
+            if not table_nodes:
+                logging.error("Failed to create text nodes from table.")
+                return None
             table_index = VectorStoreIndex(table_nodes)
 
             # create the query engine with custom config to return just one node
@@ -711,18 +723,16 @@ def get_bestguess_table_header(table_as_list = None):
             """
             
             response = query_engine.query(multishotprompt)
-
-            # get info from the header row
             header_rownum = int(response.source_nodes[0].id_)
             header_node_text = response.source_nodes[0].text
             header_raw = table_as_list[header_rownum]
             
             # correct for special case failure of table header guess 
             # Total Hack - tried using the GPT but it failed miserably
+            # we have a matching number of columns to the more frequently occuring table row dimension
             if len(header_raw) == numcols: 
-                # we have the right number of columns
                 if header_rownum-table_row_start_guess < 10:
-                    # we did not pick a row deep in the table
+                    # then we did not pick a row that is too deep in the table structure - total hack 
                     header_guess = ['TableName'] + [str(x).replace(' ','').replace('\n','_').replace('(','_').replace(')','')
                                             for x in header_raw] + ['Text']
                 else:
@@ -835,7 +845,7 @@ def get_file_table_pdf(file_data:dict = None):
                 # PDF: read the doc and get the first page tables
                 doc = fitz.open(full_filename)
 
-            logging.info(f"get_file_table_pdf OS mod = {last_mod_datetime} PDF mod = {last_mod_datetime_string} ")
+            # logging.info(f"get_file_table_pdf OS mod = {last_mod_datetime} PDF mod = {last_mod_datetime_string} ")
 
             # get the merged tables from first page 
             tmp, numcols, tbl_strategy, tbls = get_firstpage_tables_as_list(doc)
@@ -946,6 +956,8 @@ def get_file_table_xls(file_data = None):
 
            # get_bestguess_table_header => returns a dictionary
             best_guess = get_bestguess_table_header(table_as_list=df.head(50).values.tolist())
+            if best_guess is None:
+                logging.error(f"Invalid input: {full_filename} raised error in get_bestguess_table_header.")
 
             # Convert row values to list as original text of row 
             row_text = df.apply(lambda row: str(list(row.values)), axis=1)
@@ -1066,9 +1078,12 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
 
         # get the files 
         if use_dropbox:
+            yield f'Reading Dropbox files in {dirpath} at {datetime.now():%b %d %I:%M %p}:'
             dbx_refresh = os.getenv('DROPBOX_REFRESH_TOKEN')
             dbx_key = os.getenv('DROPBOX_APP_KEY')
             dbx_secret = os.getenv('DROPBOX_APP_SECRET')
+            # logging.info(f'xx - APP_KEY: {APP_KEY}, APP_SECRET: {APP_SECRET}, REFRESH_TOKEN: {REFRESH_TOKEN}')
+
             if (dbx_refresh and dbx_key and dbx_secret):
                 dropbox_access_token = get_dropbox_accesstoken_from_refreshtoken(dbx_refresh,dbx_key,dbx_secret)
                 dbx = dropbox.Dropbox(dropbox_access_token)
@@ -1089,7 +1104,7 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
         # loop the files, and extract tables  
         # for filename in filenames:
         # for full_filename in [filenames[0]]:
-        for full_filename in filenames:
+        for full_filename in filenames[9:]:
             # get the dirpath, filename and file type
             file_data = parse_fullfilename(full_filename = full_filename)
             # get the dropbox keys if we obtained file from dropbox 
@@ -1169,7 +1184,7 @@ def background_task(app, dirpath, user_id, useDropbox=False):
 
             # Process each file in the directory
             for update in save_all_file_tables_in_dir(dirpath, use_dropbox=useDropbox):
-                logging.info(f"Background Update: {update}")
+                # logging.info(f"Background Update: {update}")
                 user_data['update_status'].append(update)
                 message_queue.put(update)
 

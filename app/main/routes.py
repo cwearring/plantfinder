@@ -6,7 +6,6 @@ import uuid
 from app import create_app, db
 from app.models import User,UserData,SessionData
 from app.search.search import searchData
-from app.init.init import initSearchDropBox
 from app.main.forms import search_form, test_form, login_form
 
 load_dotenv()

@@ -5,4 +5,5 @@ bp = Blueprint('main', __name__,
                static_folder='static')
 
 from app.main import routes 
+from app.main import forms 
 

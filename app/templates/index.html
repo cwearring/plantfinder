@@ -160,7 +160,7 @@
             console.log('is_authenticated {{current_user.is_authenticated}}')
 
             $.ajax({
-                url: "/init/init2",
+                url: "{{ url_for('init.index') }}",
                 type: "POST",
                 xhrFields: {
                     withCredentials: true
