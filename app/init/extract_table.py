@@ -96,25 +96,19 @@ from app import db, create_app
 from app.models import ThreadComplete, UserData, Tables, TableData
 
 # holding area for unused 
-def best_header_word_match(header_word):
+def header_word_score(table:list = None):
     # define a list of header words from the docs 
     header_words = ['Product', 'Variety', 'Size', 'Colour', 'Order Qty', 'Cost', 'Description', 'Code', 'Name',\
                 'Category','Your Price', 'Price', 'Status', 'Zone', 'Catalog $', 'Pots/Tray', 'Amount',\
                 'WH', 'Botanical Name', 'E-LINE', 'Available','Order', 'Total', 'PIN', 'UPC','Latin Name',\
                 'Available Units','QTY', 'Notes','Avail QTY','Order Qty','Plant Name','Common Name','Sale Price',\
                 'Pot Size','List','Net','Comments','AVL','Sku','Case Qty','Packaging', "Pots Ordered", 'SIZE 1', 'SIZE 2']
- # Initial check for null string
-    if not header_word:
+ 
+    # Initial check for null string
+    if not table:
         return None
-    
-    # find the best match from header_words 
-    tmp = {n:SequenceMatcher(a=header_word.lower(), b=hd.lower()).ratio() for n,hd in enumerate(header_words)}
-    header_word_key = max(tmp, key=tmp.get)
-    match_value = tmp[header_word_key]
-    header_word_key = max(tmp, key=tmp.get)
-    match_header_word = header_words[header_word_key]
 
-    return match_header_word
+    return None
 
 def generate_hash(text):
     hash_object = hashlib.sha256(text.encode())
@@ -263,7 +257,169 @@ def save_class_in_session(df, class_name, p_key):
     
     return 
 
+def cell_diff(cells: list) -> list:
+    """
+    Calculate the element-wise differences between consecutive vectors in a list.
+    
+    Parameters:
+    - cells: A list of lists (vectors) where each inner list contains numerical values.
+    
+    Returns:
+    - A list of lists containing the rounded element-wise differences between consecutive vectors.
+    
+    Raises:
+    - ValueError: If 'cells' contains less than two vectors or if any vector contains non-numeric values.
+    - TypeError: If 'cells' is not a list of lists.
+    """
+    
+    # Check if 'cells' is a list of lists
+    if not all(isinstance(cell, tuple) for cell in cells):
+        raise TypeError("All elements in 'cells' must be lists.")
+    
+    # Check if 'cells' has at least two vectors
+    if len(cells) < 2:
+        raise ValueError("The 'cells' list must contain at least two vectors to compute differences.")
+    
+    # Ensure all elements in each vector are numeric
+    for vec in cells:
+        if not all(isinstance(num, (int, float)) for num in vec):
+            raise ValueError("All elements in each vector must be numeric.")
+
+    def vec_diff(vec1, vec2):
+        """Calculate and return the rounded element-wise difference between two vectors."""
+        return [round(v1 - v2, 2) for v1, v2 in zip(vec1, vec2)]
+    
+    # Compute the differences between consecutive vectors
+    c_diff = [vec_diff(cells[n-1], cells[n]) for n in range(1, len(cells))]
+
+    return c_diff
+
+def find_indices_within_percentage(arr, percentage):
+    """
+    Finds the indices of the first occurrence where the difference between any three consecutive
+    values in the list is less than a specified percentage of the average of these three values.
+    
+    Parameters:
+    - arr: List of real numbers.
+    - percentage: Specified percentage expressed as a decimal (e.g., 10% as 0.1).
+    
+    Returns:
+    - A tuple of indices of the three values if such a case exists, otherwise None.
+    """
+    # Ensure the array is long enough
+    if len(arr) < 3:
+        return None
+
+    for i in range(len(arr) - 2):
+        # Extract three consecutive values
+        a, b, c = abs(arr[i]), abs(arr[i + 1]), abs(arr[i + 2])
+        
+        # Calculate the average
+        avg = (a + b + c) / 3
+        
+        # Calculate the maximum difference
+        max_diff = max(abs(a - b), abs(a - c), abs(b - c))
+        
+        # Check if the maximum difference is less than the specified percentage of the average
+        if max_diff < (avg * percentage):
+            return (i, i + 1, i + 2)
+    
+    # Return None if no such trio is found
+    return None
+
+def compare_absolute_values_at_index(tuples_list, index, float_val):
+    """
+    Compares absolute values rounded to 2 decimals to a specified index in each tuple of a list against the absolute value of a float.
+
+    Parameters:
+    - tuples_list: List of tuples containing numerical values.
+    - index: The index to check in each tuple.
+    - float_val: The float value to compare against.
+
+    Returns:
+    - A list of boolean values, True if the absolute value at the specified index is equal to the absolute value of the float,
+      False otherwise.
+      
+    Raises:
+    - IndexError: If the specified index is out of range for any tuple.
+    """
+    result = []
+    for tuple_val in tuples_list:
+        try:
+            # Calculate the absolute value of the difference and compare it within 5% of the float_val's absolute value
+            difference = abs(abs(tuple_val[index]) - abs(float_val))
+            tolerance = abs(float_val) * 0.05
+            result.append(difference <= tolerance)
+        except IndexError:
+            raise IndexError(f"Index {index} is out of range for the tuple {tuple_val}.")
+    
+    return result
+
+def sort_tuples_as_grid(tuples_list):
+    # First, sort the list of tuples to ensure they are in ascending order based on the first element
+    sorted_list = sorted(tuples_list, key=lambda x: x[0])
+    
+    # Initialize a list to hold the final sequence of tuples
+    final_sequence = []
+    
+    # Iterate through the sorted list to apply the criteria for the sequence
+    for i in range(len(sorted_list) - 1):
+        # Check if the current tuple and the next tuple meet the criteria
+        if abs(sorted_list[i][1] - sorted_list[i + 1][0]) < 0.1:
+            # If the current tuple is not in the final sequence, add it
+            if not final_sequence or final_sequence[-1] != sorted_list[i]:
+                final_sequence.append(sorted_list[i])
+            # Add the next tuple as it meets the criteria with the current tuple
+            final_sequence.append(sorted_list[i + 1])
+    
+    # Return the final sequence of tuples
+    return final_sequence
+
 # start of useful functions 
+
+def get_header_match_table_cells(fitz_page=None, fitz_table=None):
+    """
+    Extracts header text matches for each table cell from a provided page and table object.
+
+    Parameters:
+    - fitz_page: A page object from PyMuPDF (fitz) library, containing the table.
+    - fitz_table: A table object, typically extracted from a page, which contains cells.
+
+    Returns:
+    - A tuple containing the table header grid and the start index of the table body,
+      or None if an error occurs or input parameters are invalid.
+    """
+    if fitz_table is None or fitz_page is None:
+        logging.error("Invalid input: 'fitz_table' or 'fitz_page' is None.")
+        return None
+
+    try:
+        hdr = fitz_table.header
+        hdr_0 = hdr.cells[0]
+
+        first_row = 0 if fitz_table.header.external else 1
+
+        cell_d = cell_diff(fitz_table.cells)
+        tbl_start = find_indices_within_percentage([x[1] for x in cell_d], 0.02)
+        grid_y = round(sum([abs(x[1]) for x in cell_d[tbl_start[0]:tbl_start[2]]]) / 2, 1)
+
+        cell_x = set([(x[0], x[2]) for x in fitz_table.cells])
+        grid_x = sort_tuples_as_grid(cell_x)
+
+        tbl_hdr_rows = []
+        for row in range(5):  # Iterate over an arbitrary number of rows above grid start
+            y_row = (fitz_table.cells[tbl_start[0]][1] - row * grid_y,
+                     fitz_table.cells[tbl_start[0]][1] - (row + 1) * grid_y)
+            tbl_cells = [(x[0], y_row[1], x[1], y_row[0]) for x in grid_x]
+            tbl_hdr = [fitz_page.get_textbox(c).strip() for c in tbl_cells]
+            tbl_hdr_rows.append(tbl_hdr)
+
+        tbl_hdr_grid = tbl_hdr_rows[::-1]
+        return tbl_hdr_grid, tbl_start[0]
+
+    except Exception as e:
+        logging.error(f"An error occurred: {str(e)}")
+        return None
 
 def convert_epoch_to_datetime(epoch_seconds):
     """
@@ -460,6 +616,40 @@ def most_frequent_integer(int_list: List[int]) -> Optional[int]:
 
     return most_frequent
 
+def most_frequent_num(float_list: List[float]) -> Optional[int]:
+    """
+    Finds the most frequently occurring integer in a list.
+    
+    Parameters:
+    - float_list (List[int]): A list of numbers to analyze.
+    
+    Returns:
+    - Optional[int]: The number that appears most frequently in the list. If there are multiple numbers
+      with the same highest frequency, one of them will be returned. Returns None if the list is empty
+      or contains no numbers.
+    
+    Raises:
+    - ValueError: If the input list contains non-float elements.
+    - ValueError: If the input is not a list.
+    """
+    
+    if not isinstance(float_list, list):
+        raise ValueError("Input must be a list.")
+    
+    if len(float_list) == 0:
+        return None  # Or raise an exception, depending on desired behavior
+    
+    if not all(isinstance(x, float) for x in float_list):
+        raise ValueError("The list must contain only integers.")
+
+    frequency = {}
+    for num in float_list:
+        frequency[num] = frequency.get(num, 0) + 1
+
+    most_frequent = max(frequency, key=frequency.get, default=None)
+
+    return most_frequent
+
 def parse_fullfilename(full_filename:str = None):
     '''
     Parse a full file URI into components
@@ -647,9 +837,7 @@ def get_firstpage_tables_as_list(doc=None):
         tbl_out.extend(tbl.extract())
         col_counts.append(tbl.col_count)
 
-    col_count = most_frequent_integer(col_counts)
-
-    return tbl_out, col_count, table_strategy, tbls
+    return tbl_out, table_strategy, tbls
 
 def get_bestguess_table_header(table_as_list = None):
     '''
@@ -848,15 +1036,40 @@ def get_file_table_pdf(file_data:dict = None):
             # logging.info(f"get_file_table_pdf OS mod = {last_mod_datetime} PDF mod = {last_mod_datetime_string} ")
 
             # get the merged tables from first page 
-            tmp, numcols, tbl_strategy, tbls = get_firstpage_tables_as_list(doc)
+            tables_aslist, tbl_strategy, tbls = get_firstpage_tables_as_list(doc)
+            # guess the dominant column count
+            numcols = most_frequent_integer([len(x) for x in tables_aslist])
 
-            # get a dict using GPT to guess the header row  
-            best_guess = get_bestguess_table_header(tmp)
-            col_len_test = len(best_guess.get('header_guess'))-2
+            # special case for PDF header with different number of cells
+            fitz_header_aslist = None
+            for t in tbls.tables:
+                # is our table the right width? If so, it is our main table
+                if t.col_count == numcols:
+                    fitz_header = t.header
+                    # is the header the right width?
+                    if len(fitz_header.cells) == t.col_count:
+                        # is the header already in the table array?
+                        if fitz_header.external:
+                            fitz_header_aslist = fitz_header.names
+                        else:
+                            break
+                    else:
+                        # different cell counts for header and table 
+                        # parse area above the table with the table cell boundaries 
+                        fitz_header_aslist, tbl_start_row = get_header_match_table_cells(fitz_page = doc[0], 
+                                                                          fitz_table = t)
+
+                        # add the parsed headers to the table body 
+                        tables_aslist = fitz_header_aslist + tables_aslist[tbl_start_row:]
+
+            # use GPT to guess the header row - return dict 
+            best_guess = get_bestguess_table_header(tables_aslist)
+
+            col_len_test = len(best_guess.get('header_guess'))-2  # added Text, Tablename as columns in best_guess
 
             # merge header with the table from the first page 
             table_data = [ [file_data.get('filename')] +  row + [f"{row}"] 
-                          for row in tmp[best_guess.get('header_rownum')+1:] 
+                          for row in tables_aslist[best_guess.get('header_rownum')+1:] 
                           if len(row) == col_len_test]
             
             # add the tables from the rest of the pages using the same tbl_strategy 
@@ -1104,7 +1317,7 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
         # loop the files, and extract tables  
         # for filename in filenames:
         # for full_filename in [filenames[0]]:
-        for full_filename in filenames[9:]:
+        for full_filename in filenames: # filenames[4:6]
             # get the dirpath, filename and file type
             file_data = parse_fullfilename(full_filename = full_filename)
             # get the dropbox keys if we obtained file from dropbox 
@@ -1138,8 +1351,8 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
             logging.info(f"Created {file_data.get('filetoken')} table at {datetime.now():%b %d %I:%M %p}/nHeader: {table_header['header_guess']}")
             yield f"Created {file_data.get('filetoken')} table at {datetime.now():%b %d %I:%M %p}"
             yield f"From: {table_header.get('header_raw')}"
-            yield f"Table Header Guess: {table_header.get('header_guess')}"
-            yield f"Search Header Guess: {search_headers} "
+            yield f"Guess: {table_header.get('header_guess')}"
+            yield f"Search: {search_headers} "
 
             # save the table to the session 
             status = save_table_to_session(file_data, file_table, table_header, search_headers )
