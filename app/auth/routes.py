@@ -1,6 +1,4 @@
-
 from flask import Flask, render_template,redirect,flash,url_for,session,Blueprint,current_app
-from flask_bcrypt import Bcrypt,generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import UserMixin,login_user,LoginManager, current_user,logout_user,login_required
@@ -8,12 +6,11 @@ from sqlalchemy.exc import IntegrityError,DataError,DatabaseError,InterfaceError
 from werkzeug.routing import BuildError
 from datetime import timedelta
 
-from app.auth import bp 
-from app.auth.forms import login_form,register_form
-from app import bcrypt
-from app.models import User, db
 from app import login_manager
-from app.main.forms import test_form
+from app import bcrypt
+from app.auth import bp 
+from app.auth.forms import LoginForm, RegisterForm
+from app.models import User, Organization, db
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -26,12 +23,14 @@ def session_handler():
 
 @bp.route("/login/", methods=("GET", "POST"), strict_slashes=False)
 def login():
-    form = login_form()
+    form = LoginForm()
+    form.org.choices = [(c.id, c.name) for c in Organization.query.all()]
 
     if form.validate_on_submit():
         try:
+            org = form.org.data 
             user = User.query.filter_by(email=form.email.data).first()
-            if check_password_hash(user.pwd, form.pwd.data):
+            if bcrypt.check_password_hash(user.pwd, form.pwd.data):
                 login_user(user)
                 return redirect(url_for('main.index'))
             else:
@@ -49,14 +48,18 @@ def login():
 # Register route
 @bp.route("/register/", methods=("GET", "POST"), strict_slashes=False)
 def register():
-    form = register_form()
+    form = RegisterForm()
+    form.org.choices = [(c.id, c.name) for c in Organization.query.all()]
+
     if form.validate_on_submit():
         try:
+            org = form.org.data 
             email = form.email.data
             pwd = form.pwd.data
             username = form.username.data
-            
+
             newuser = User(
+                org_id = org,
                 username=username,
                 email=email,
                 pwd=bcrypt.generate_password_hash(pwd).decode('utf-8'),

@@ -2,8 +2,8 @@
 from flask import Blueprint, jsonify, session, render_template, request, current_app, redirect, flash, url_for
 
 from app.search import bp
-from app.main.forms import search_form
-from app.models import User, db, SessionData, UserData
+from app.main.forms import SearchForm
+from app.models import User, db
 
 @bp.route('/search_data/', methods=("GET", "POST"), strict_slashes=False)
 def search_data():
@@ -12,7 +12,7 @@ def search_data():
     from app.search import searchData
 
     # create an instance from the form class
-    form = search_form()
+    form = SearchForm()
 
     if form.validate_on_submit():
         try:
@@ -22,7 +22,7 @@ def search_data():
             result = searchData(search_term, is_html)
             return result
         except Exception as e:
-            flash(e, "Error in search_form.search_text.data")
+            flash(e, "Error in SearchForm.search_text.data")
 
     return render_template("home.html",
         form=form,

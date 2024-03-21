@@ -52,6 +52,7 @@ from dotenv import load_dotenv
 # fitz is the PDF parser with table recognize capabilities 
 import fitz
 import pandas as pd
+import time
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 from typing import List, Optional
@@ -93,7 +94,12 @@ message_queue = Queue()
 
 # get functions and variables created by __init__.py
 from app import db, create_app
-from app.models import ThreadComplete, UserData, Tables, TableData
+from app.models import ThreadComplete, User, Organization, Tables, TableData
+
+# define some globals for dropbox resiliency 
+MAX_RETRY_COUNT = 5
+BACKOFF_FACTOR = 1.5
+RETRY_STATUS_CODES = (503,)
 
 # holding area for unused 
 def header_word_score(table:list = None):
@@ -662,6 +668,7 @@ def parse_fullfilename(full_filename:str = None):
         'filetype':filetype
         'dropboxdbx' : None (placeholder for dropbox dbx object)
         'dropboxid': None (placeholder for dropboxID)
+        'dropboxurl': None (placeholder for dropbox url)
     '''
     try:
         # get the filename and directory path and file type
@@ -673,11 +680,11 @@ def parse_fullfilename(full_filename:str = None):
 
         return {'fullfilename': full_filename,'dirpath':dirpath,'filename':filename, 
                 'filetoken':filetoken, 'filetype':filetype, 'vendor':vendor, 
-                'dropboxdbx':None, 'dropboxid':None }
+                'dropboxdbx':None, 'dropboxid':None, 'dropboxurl':None  }
     except:
         return {'fullfilename':None,'dirpath':None, 'filename':None, 
                 'filetoken':None, 'filetype':None, 'vendor':None, 
-                'dropboxdbx':None, 'dropboxid':None  }
+                'dropboxdbx':None, 'dropboxid':None, 'dropboxurl':None   }
 
 def get_dropbox_accesstoken_from_refreshtoken(REFRESH_TOKEN, APP_KEY, APP_SECRET):
     '''
@@ -779,6 +786,25 @@ def get_dropbox_filenames(dbx, startDir:str):
     walk_dir_recursive(dbx, startDir)
 
     return filesFound
+
+def create_shared_link_with_retries(dbx, file_path):
+    for attempt in range(MAX_RETRY_COUNT):
+        try:
+            shared_link_meta = dbx.sharing_create_shared_link(file_path)
+            logging.info(f"Shared Link: {shared_link_meta.url}")
+            return shared_link_meta.url  # Ensure the URL is returned on success
+        except dropbox.exceptions.ApiError as api_err:
+            handle_api_error(api_err, attempt)
+
+def handle_api_error(api_err, attempt, file_path):
+    if api_err.error.is_path() and api_err.error.get_path().is_not_found():
+        raise Exception(f'File {file_path} does not exist.')
+    elif api_err.status_code in RETRY_STATUS_CODES:
+        wait_seconds = (2 ** attempt) * BACKOFF_FACTOR
+        logging.error(f"HttpError status_code={api_err.status_code}: Waiting for {wait_seconds} seconds...")
+        time.sleep(wait_seconds)
+    else:
+        raise api_err
 
 def get_filenames_in_directory(top_dir):
     """
@@ -1209,7 +1235,8 @@ def save_table_to_session(file_data, file_table, table_header, search_headers):
     Does not commit objects -  db.session.commit() required 
 
     Parameters:
-    - file_data: A dictionary w keys 'fullfilename', 'dirpath', 'filename', 'filetoken', 'filetype', 'vendor'.
+    - file_data: Dict keys: 'fullfilename', 'dirpath', 'vendor', 'filename', 'filetoken', 
+                    'filetype', dropboxdbx, dropboxid, dropboxurl.
     - file_table: A pandas DataFrame object that represents the table data to be saved.
     - file_header: A dictionary with keys 'filename', 'last_mod_datetime', 'numcols', 
                     'header_rownum', 'header_guess', 'header_raw', 'header_node_text', 'plantname_in_header'
@@ -1234,12 +1261,14 @@ def save_table_to_session(file_data, file_table, table_header, search_headers):
         # Update existing Tables entry or create a new one
         if existing_table:
             existing_table.file_last_modified = table_header.get("last_mod_datetime")
+            existing_table.dropboxurl=file_data.get("dropboxurl"),
             status['table'] = 'Updated'
         else:
             new_table = Tables(
                 vendor=file_data.get("vendor"), 
                 file_name=file_data.get("filename"), 
                 file_last_modified = table_header.get("last_mod_datetime"),
+                file_dropbox_url=file_data.get("dropboxurl"),
                 table_name=file_data.get("filetoken")
             )
             db.session.add(new_table)
@@ -1300,7 +1329,12 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
             if (dbx_refresh and dbx_key and dbx_secret):
                 dropbox_access_token = get_dropbox_accesstoken_from_refreshtoken(dbx_refresh,dbx_key,dbx_secret)
                 dbx = dropbox.Dropbox(dropbox_access_token)
-                dropbox_filenames = get_dropbox_filenames(dbx,startDir = '/Garden Centre Ordering Forms/OrderForms')
+
+                try:
+                    dropbox_filenames = get_dropbox_filenames(dbx,startDir = '/Garden Centre Ordering Forms/OrderForms')
+                except Exception as err:
+                    logging.error("Error occurred: %s", err)
+
                 filenames = [f for f in dropbox_filenames.keys() if allowed_file(f.split('/')[-1])]
             else:
                 raise Exception('DROPBOX_REFRESH_TOKEN, DROPBOX_APP_KEY, DROPBOX_APP_SECRET not found')
@@ -1322,8 +1356,12 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
             file_data = parse_fullfilename(full_filename = full_filename)
             # get the dropbox keys if we obtained file from dropbox 
             if use_dropbox:
+                # save the dropbox objects
                 file_data['dropboxdbx']=dbx
                 file_data['dropboxid']=dropbox_filenames.get(full_filename)
+                file_metadata = dbx.files_get_metadata(full_filename) # suggested as error check 
+                shared_link = create_shared_link_with_retries(dbx, full_filename)
+                file_data['dropboxurl'] = shared_link
 
             # yield the status
             logging.info(f'{file_data.get("vendor")}: {file_data.get("filename")} at {datetime.now():%b %d %I:%M %p}')
@@ -1364,6 +1402,7 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
         logging.error(f"Database operation failed: {e}")
         db.session.rollback()
 
+
 def background_task(app, dirpath, user_id, useDropbox=False):
     """
     Performs a background task to update file tables in a specified directory for a given user.
@@ -1388,24 +1427,22 @@ def background_task(app, dirpath, user_id, useDropbox=False):
             db.session.commit()
 
             # Initialize or update user data
-            user = UserData.query.get(user_id)
-            if not user:
-                logging.error(f"User {user_id} not found.")
+            user = User.query.get(user_id)
+            user_org = Organization.query.get(user.org_id)
+
+            if not user_org:
+                logging.error(f"User org id {user.org_id} not found in Organization.")
                 return
-            user_data = user.data if user.data else {}
-            user_data['update_status'] = []
+            
+            # for holding details of update 
+            init_log = []
 
             # Process each file in the directory
             for update in save_all_file_tables_in_dir(dirpath, use_dropbox=useDropbox):
                 # logging.info(f"Background Update: {update}")
-                user_data['update_status'].append(update)
+                init_log.append(update)
                 message_queue.put(update)
-
-            # Save the updated user data
-            user.data = user_data
-            db.session.merge(user)
-            db.session.commit()
-
+            
             # Signal task completion
             completion_message = f"Completed Inventory Update at {datetime.now():%b %d %I:%M %p}"
             logging.info(completion_message)
@@ -1414,9 +1451,11 @@ def background_task(app, dirpath, user_id, useDropbox=False):
             # Update task completion status
             if check_thread:
                 check_thread.task_complete = True
-                initStatus = f'Inventory last refreshed at {datetime.now():%b %d %I:%M %p}'
-                user.data = {'status': initStatus}
-                db.session.merge(user)
+                # Save the data updates
+                user_org.is_init = True
+                user_org.init_status = f'Inventory last refreshed at {datetime.now():%b %d %I:%M %p}'
+                user_org.init_details = "\n".join(init_log)
+                db.session.merge(user_org)
                 db.session.commit()
 
             message_queue.put(None)
@@ -1426,3 +1465,5 @@ def background_task(app, dirpath, user_id, useDropbox=False):
             logging.error(f"Database operation failed: {e}")
         except Exception as e:
             logging.error(f"Unexpected error: {e}")
+
+

@@ -5,23 +5,9 @@ import email_validator
 from wtforms import ValidationError,validators
 from app.models import User, SessionData
 
-class search_form(FlaskForm):
+class SearchForm(FlaskForm):
     search_text = StringField(
         validators=[Optional()]
     )
 
-class test_form(FlaskForm):
-    test = PasswordField(validators=[InputRequired(), Length(min=8, max=72)])
-    # Placeholder labels to enable form rendering
-    test = StringField(
-        validators=[Optional()]
-    )
-
-class login_form(FlaskForm):
-    email = StringField(validators=[InputRequired(), Email(), Length(1, 64)])
-    pwd = PasswordField(validators=[InputRequired(), Length(min=8, max=72)])
-    # Placeholder labels to enable form rendering
-    username = StringField(
-        validators=[Optional()]
-    )
 

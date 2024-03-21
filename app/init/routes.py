@@ -2,29 +2,25 @@ import uuid
 import threading
 from datetime import datetime 
 
-from flask import Blueprint, request, Response
-from flask import session, current_app, jsonify, render_template, redirect, flash, url_for
+from flask import request, Response
+from flask import current_app, jsonify, render_template, redirect, url_for
 from flask_login import current_user
 
-# for drop box data access - get env variables from .env file 
 import os
 from dotenv import load_dotenv
+# for drop box data access - get env variables from .env file 
 load_dotenv()
 APP_KEY = os.environ.get('DROPBOX_APP_KEY')
 APP_SECRET = os.environ.get('DROPBOX_APP_SECRET')
 REFRESH_TOKEN = os.environ.get('DROPBOX_REFRESH_TOKEN')
 
-# for more secure file handling
-from werkzeug.utils import secure_filename
-
-# for logging 
 import logging
 # Configure logging
 # logging.basicConfig(level=logging.INFO)
 
 from app import db
 from app.init import bp 
-from app.models import User,  SessionData, UserData, ThreadComplete
+from app.models import ThreadComplete, Organization
 
 from .extract_table import background_task, message_queue, Empty
 
@@ -33,17 +29,18 @@ def index():
     # template_folder_value = get_absolute_template_folder(bp)
     # x = bp.template_folder   y = bp.root_path
      
-    # dirpath = request.form['dirpath']
-    dirpath = './OrderForms' # 2024-01-29 hardcode for testing 
-    
     # for sync testing 
     # results = save_all_file_tables_in_dir('../' + dirpath)
 
-    # for streaming over message queue
     app = current_app._get_current_object()
+    
+    # get user and org data 
     userid = current_user.id
-    useDropbox = True 
+    user_org = Organization.query.get(current_user.org_id)
+    useDropbox = user_org.is_dropbox 
+    dirpath = user_org.dirpath 
 
+    # for streaming over message queue
     threading.Thread(target=background_task, args=(app, dirpath, userid, useDropbox )).start()
 
     return jsonify(status="started")

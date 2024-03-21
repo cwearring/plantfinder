@@ -12,8 +12,7 @@ from datetime import datetime
 # from flask_session import Session
 # from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from app.models import UserData, Tables, TableData
-from app.main.forms import search_form
+from app.models import Organization, Tables, TableData
 
 def findString(token:str, myString:str):
     tst = [n for n,x in enumerate( myString.split('\n')) if token.lower() in x.lower()]
@@ -80,18 +79,24 @@ def searchData(searchTerm:str, isHTML = True ):
     all_tables = Tables.get_all_sorted()
     
     # delete the rows with the same vendor to retain just one with latest file_modifed 
-    # 2024-02-08 Have to add smarts to differentiate shrubs, perennials, general(annuals?)
+    # 2024-03-21 added filter for perennials - get_most_recent_by_vendor returns tuple ()
     all_vendors = Tables.get_unique_vendors()
-    most_recent_by_vendor = [Tables.get_most_recent_by_vendor(v) for v in all_vendors]
+    # get latest with and without perennial in filename 
+    most_recent_by_vendor = [Tables.get_most_recent_by_vendor(v, str_token='erennia') for v in all_vendors]
+    # unpack the tuples to a single list removing empty entries 
+    most_recent_by_vendor = [x for t in most_recent_by_vendor for x in t if x]
 
     # init output as a dict of dicts 
     theOutput = {}
+    theUrls = {} # 2024-03-21 - added to allow dropbox URL link in search results 
+
     # top key = name of table 
     # sub keys are headings -> list of values for that heading 
 
     try:
         for tbl in most_recent_by_vendor:
             logging.info(f"{tbl.table_name}")
+
             # retrieve the df
             tbl_df = TableData.get_dataframe(tbl.table_name)
             tbl_df.fillna('Unknown', inplace=True)
@@ -104,7 +109,8 @@ def searchData(searchTerm:str, isHTML = True ):
                 lambda x: x.str.contains('|'.join(searchStrings), case=False, na=False)).any(axis=1)
             filtered_df = tbl_df[mask_any]
 
-            # Create a mask where each search term is checked individually, and only rows where all terms are found are marked True
+            # Create a mask where each search term is checked individually, 
+            # and only rows where all terms are found are marked True
             # Applying the helper function across the DataFrame:
             mask_all = tbl_df[tbl_search_cols].astype(str).apply(
                 lambda x: check_all_terms(x, searchStrings),
@@ -132,62 +138,11 @@ def searchData(searchTerm:str, isHTML = True ):
 
                 # populate the return structure with the filtered columns
                 theOutput[f"{tbl.vendor}:   {tbl.table_name}"]=dict_of_lists
+                # a matching structure with the dropbox URLs if they exist 
+                theUrls[f"{tbl.vendor}:   {tbl.table_name}"]= tbl.file_dropbox_url
 
     except Exception as e:
         logging.error(f"General Exception: {e}")
         return "Error: An unexpected error occurred."
 
-    # skip the old stuff
-    if searchTerm and False:
-        searchStrings = [x.strip() for x in searchTerm.split(' and ')]
-        
-        # get a list of line numbers with a text string match and print them 
-        foundText = {}
-        tmpFind = {}
-        theOutput = ""
-
-        # sorting and filering - group by vendor, show latest date 
-        tmpDictSort = []
-        for tFile,fString in dfDict.items():
-            # get a standard date format
-            if type(fString[1]) is list:
-                myDate = datetime.strptime(fString[1][0], "%B %d, %Y")
-            elif 'datetime' in str(type(fString[1])):
-                myDate = fString[1]
-            else:
-                myDate = 'bad date format'
-            
-            # get the vendor 
-            tmpDictSort.append([tFile.split('/')[2].upper(), myDate, tFile])
-
-        tmpDictSort.reverse()
-        # now select just the latest version of each supplier
-        tmpDictDate = {x[0]:(x[1], x[2]) for x in tmpDictSort}
-        tmpDictSupplier = list(tmpDictDate.keys())
-        tmpDictSupplier.sort()
-        
-        for mySupplier in tmpDictSupplier:
-            # get the date and supplier 
-            myDate = tmpDictDate[mySupplier][0].strftime( "%B %d, %Y")
-            myFile = tmpDictDate[mySupplier][1].split('/')[3]
-            tFile = tmpDictDate[mySupplier][1]
-            print(f"searching {mySupplier}: {tFile.split('/')[-1]}")
-
-            # logic for AND search 
-            for myTerm in searchStrings:
-                tmpFind[myTerm] = findString(myTerm,dfDict[tFile][0])
-
-            # now we have search results for each term - check for overlaps
-            intersectFind = set.intersection(*[set(x) for x in tmpFind.values()]) 
-            foundText[tFile] = list(intersectFind)
-
-            if foundText.get(tFile): 
-                # print(f"\nFound {searchTerm} in {tFile} modified {fString[1]}:\n")
-                # [print("    ",x) for n,x in enumerate(dfDict[tFile][0].split('\n')) if n in foundText.get(tFile) ]
-                theOutput += f"{NL}{NL}{mySupplier}: {myFile}{NL} modified {myDate} "
-                tmpOutput =  ["    " + x for n,x in enumerate(dfDict[tFile][0].split('\n')) if n in foundText.get(tFile) ]            
-                for myRow in tmpOutput:
-                    theOutput += f"{NL}{myRow}"
-            jnk = 0 
-
-    return(theOutput)
+    return (theOutput, theUrls)

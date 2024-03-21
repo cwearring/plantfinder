@@ -3,39 +3,43 @@ from flask_login import UserMixin
 import pandas as pd 
 from datetime import datetime 
 from io import StringIO
+from sqlalchemy import and_, not_
+
+class Organization(db.Model):
+    __tablename__ = "organization"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), nullable=False)
+    dirpath = db.Column(db.String(80))
+    is_dropbox = db.Column(db.Boolean, default=True)
+    is_init = db.Column(db.Boolean, default=False)
+    init_status = db.Column(db.String(120), default= "Please initialize the inventory" )
+    init_details = db.Column(db.String(None) )
+    data = db.Column(db.PickleType())
 
 class User(UserMixin, db.Model):
     __tablename__ = "user"
     
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
+    org_id = db.Column(db.Integer,  unique=False, nullable=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    pwd = db.Column(db.String(300), nullable=False, unique=True)
+    pwd = db.Column(db.String(300), nullable=False)
 
     def __repr__(self):
         return '<User %r>' % self.username
     
-# user id is an integer 
-class UserData(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    data = db.Column(db.PickleType())
-
-    @classmethod
-    def get_user_data(cls, user_id):
-        user_data = cls.query.get(user_id)
-        if user_data:
-            return user_data.data
-        else:
-            return None
-
 # session id is a string token
 class SessionData(db.Model):
+    __tablename__ = "session_data"
+    
     id = db.Column(db.String(36), primary_key=True)
     data = db.Column(db.PickleType())
 
 # Track the status of long running initialize background thread 
 class ThreadComplete(db.Model):
     __tablename__ = 'threads'
+
     id = db.Column(db.Integer, primary_key=True)
     task_complete = db.Column(db.Boolean, default=False)
 
@@ -49,10 +53,13 @@ class ThreadComplete(db.Model):
     
 # A list of all the files we have processed into tables 
 class Tables(db.Model):
+    __tablename__ = "tables"
+    
     id = db.Column(db.Integer, primary_key=True)
     vendor = db.Column(db.String(300), unique=False, nullable=False)
     file_name = db.Column(db.String(300), unique=True, nullable=False)
     file_last_modified = db.Column(db.DateTime, nullable=False)
+    file_dropbox_url = db.Column(db.String(2048), nullable=True, default=None)
     table_name = db.Column(db.String(300), unique=True, nullable=False)
     created_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -70,6 +77,18 @@ class Tables(db.Model):
         - A list of Tables instances representing all entries in the database, sorted as described.
         """
         return cls.query.order_by(cls.vendor, cls.file_last_modified.desc(), cls.table_name).all()
+    
+    @classmethod
+    def get_unique_vendors(cls):
+        """
+        Returns a unique list of all vendors.
+        
+        Returns:
+        - A list of unique vendor names present in the Tables entries.
+        """
+        vendors = cls.query.with_entities(cls.vendor).distinct().all()
+        # Extracting vendor names from the tuples returned by `.all()`
+        return [vendor[0] for vendor in vendors]
     
     @classmethod
     def get_all_by_vendor(cls, vendor_name):
@@ -90,35 +109,53 @@ class Tables(db.Model):
         return cls.query.filter_by(vendor=vendor_name).order_by(cls.file_last_modified.desc(), cls.file_name).all()    
 
     @classmethod
-    def get_most_recent_by_vendor(cls, vendor_name):
+    def get_most_recent_by_vendor(cls, vendor_name, str_token: str = None):
         """
-        Returns the table entry with the most recent file_last_modified date for a given vendor.
+        Returns the table entries with the most recent file_last_modified date for a given vendor:
+        - one with an optional user-specified string token in the file_name
+        - one without the string token in the file_name.
         
         Parameters:
         - vendor_name: A string representing the name of the vendor.
+        - str_token: An optional string token to search in the file_name.
         
         Returns:
-        - An instance of the Tables class representing the most recent table entry for the given vendor,
-        or None if the vendor does not exist.
+        - A tuple of two instances of the Tables class:
+            - The first element is the most recent table entry for the given vendor with the str_token in the file_name.
+            - The second element is the most recent table entry for the given vendor without the str_token in the file_name.
+        Each element can be None if no matching entry exists.
         """
-        return cls.query.filter_by(vendor=vendor_name).order_by(cls.file_last_modified.desc()).first()
-    
-    @classmethod
-    def get_unique_vendors(cls):
-        """
-        Returns a unique list of all vendors.
+        query_base = cls.query.filter_by(vendor=vendor_name)
         
-        Returns:
-        - A list of unique vendor names present in the Tables entries.
-        """
-        vendors = cls.query.with_entities(cls.vendor).distinct().all()
-        # Extracting vendor names from the tuples returned by `.all()`
-        return [vendor[0] for vendor in vendors]
-
+        if str_token:
+            with_token = query_base.filter(cls.file_name.contains(str_token)).order_by(cls.file_last_modified.desc()).first()
+        else:
+            with_token = None
+        
+        without_token = query_base.filter(
+            not_(cls.file_name.contains(str_token)) if str_token else cls.file_last_modified.isnot(None)
+        ).order_by(cls.file_last_modified.desc()).first()
+        
+        return with_token, without_token
+        
+        @classmethod
+        def get_unique_vendors(cls):
+            """
+            Returns a unique list of all vendors.
+            
+            Returns:
+            - A list of unique vendor names present in the Tables entries.
+            """
+            vendors = cls.query.with_entities(cls.vendor).distinct().all()
+            # Extracting vendor names from the tuples returned by `.all()`
+            return [vendor[0] for vendor in vendors]
 
 # The data saved as a python dataframe - indendent of df.columns 
 class TableData(db.Model):
+    __tablename__ = "table_data"
+    
     table_name = db.Column(db.String(300), primary_key=True, unique=True, nullable=False)
+    table_columns = db.Column(db.JSON(), nullable=True)  # Field to store a Python list as JSONB
     search_columns = db.Column(db.JSON(), nullable=True)  # Field to store a Python list as JSONB
     row_count = db.Column(db.Integer, unique=False, nullable=True)
     df = db.Column(db.JSON(), unique=False, nullable=True)
@@ -174,6 +211,29 @@ class TableData(db.Model):
         record = cls.query.filter_by(table_name=table_name).first()
         if record:
             return record.search_columns
+        else:
+            return None   
+            
+    @classmethod
+    def get_table_columns(cls, table_name):
+        """
+        Retrieves the list of table columns for the specified table.
+
+        Parameters:
+        - table_name: A string representing the name of the table for which the columns are retrieved.
+
+        Returns:
+        - A list of table columns if the table exists ; otherwise, returns None.
+
+        Raises:
+        - ValueError: If the `table_name` is not a string or if it is empty.
+        """
+        if not isinstance(table_name, str) or not table_name.strip():
+            raise ValueError("table_name must be a non-empty string")
+
+        record = cls.query.filter_by(table_name=table_name).first()
+        if record:
+            return record.table_columns
         else:
             return None   
             

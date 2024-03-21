@@ -4,9 +4,9 @@ from dotenv import load_dotenv
 import uuid
 
 from app import create_app, db
-from app.models import User,UserData,SessionData
+from app.models import User, SessionData, Organization
 from app.search.search import searchData
-from app.main.forms import search_form, test_form, login_form
+from app.main.forms import SearchForm
 
 load_dotenv()
 
@@ -31,46 +31,65 @@ def index():
         session['session_id'] = str(uuid.uuid4())
 
     # Retrieve session data from the database using the unique identifier
-    session_id = session['session_id']
-    session_data = SessionData.query.get(session_id)
+    # session_id = session['session_id']
+    # session_data = SessionData.query.get(session_id)
 
-    # check for previously existing user data 
+    # check for previously existing user and org data  
     if current_user.is_authenticated:
-        user_id = current_user.id
-        user_data = UserData.query.get(user_id)
+        user_org = Organization.query.get(current_user.org_id)
     else:
-        user_data = None
+        # check for existing user info 
+        user_org = None
 
-    if user_data:
-        initStatusElement = user_data.data.get('status')
-    elif current_user.is_authenticated: # but no user data 
-        user = UserData(id=user_id, data={ 'status':"Please initialize the inventory"})
-        db.session.merge(user)
+    if user_org:
+        initStatusElement = user_org.init_status
+    elif current_user.is_authenticated: # but no user_org matched- create a new org 
+        new_org = Organization(
+            name="Woodland",
+            dirpath="./OrderForms",
+            is_dropbox=True,  # This will use the default if not specified
+            is_init=False,  # This will use the default if not specified
+            init_status="Please initialize the inventory",  # This will use the default if not specified
+            init_details=None,  # set the 'data' field to None initially
+            data=None  # Assuming you want to set the 'data' field to None initially
+        )
+        initStatusElement = new_org.init_status
+        
+        db.session.add(new_org)
         db.session.commit()
-        initStatusElement = UserData.query.get(user_id)
+
     else:
         initStatusElement = "Please initialize the inventory"  
 
     # create an instance from the form class
-    form=search_form()
+    form=SearchForm()
     
     result=None
     search_term=None
+    result_tables = None
+    result_url = None               
     
     if form.validate_on_submit():
         try:
             search_term = form.search_text.data
             # Call the searchData function
             is_html = True  # Set this according to your requirements
-            result = searchData(search_term, is_html)
+
+            # returns a tuple (theOutput, theUrls)
+            result = searchData(search_term, is_html)            
+            if result:
+                result_tables = result[0]
+                result_url = result[1]
+
         except Exception as e:
-            flash(e, "Error in search_form.search_text.data")
+            flash(e, "Error in SearchForm.search_text.data")
 
     return render_template("index.html", 
                             form=form,
-                            title="Plantfinder Dev", 
+                            title="Woodland Plantfinder Dev", 
                             template_folder='templates',
-                            tables=result,
+                            tables=result_tables,
+                            tables_url = result_url,
                             search_term=search_term,
                             initStatusElement=initStatusElement
                             )

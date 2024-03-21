@@ -24,6 +24,12 @@
                     <h5 class="text-primary">{{ text }}</h5>
                 </div>
                 
+                <!-- Organization: select from drop down list populated from dB -->
+                {{ form.hidden_tag() }}
+                <div class="form-group mb-3">
+                    {{ form.org(class_="form-control", render_kw={"placeholder": "Organization"}) }}
+                </div>
+            
                 {% if request.path == '/auth/register/' %}
                 <div class="form-group mb-3">
                     {{ form.username(class_="form-control",placeholder="Username")}}
@@ -35,6 +41,7 @@
                 </div>
                 {% endfor%}
                 {% endif%}
+
                 <div class="form-group mb-3">
                     {{ form.email(class_="form-control",placeholder="Email")}}
                 </div>

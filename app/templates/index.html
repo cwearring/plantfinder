@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title%} {{ title }} {% endblock %}
 {% block content%}
-<!-- define some styles for the table display -->
+<!-- define some styles for the results table display -->
 <style>
     .small-text-table-header {
         font-size: 0.7rem; /* Search results font size relative to base browser font */
@@ -30,21 +30,21 @@
 
     {% if current_user.is_authenticated %}
 
-        <h1>Welcome to Plantfinder </h1>
-        You are logged in as user: {{ current_user.username }}
+        <h2>Welcome to the Woodland Plantfinder </h2>
+        You are logged in as user: {{ current_user.username }} &nbsp;&nbsp;
         
         <a href="{{url_for('auth.logout')}}">Logout</a>
 
         <!-- Row: Init Data Button -->
         <div class="row mt-2">
-            <div class="col-lg-5 col-md-6 m-auto card p-4">
+            <div class="col-lg-5 col-md-6 m-auto card p-2">
                 <button type="button" id="initButton" class="btn btn-primary">Refresh Supplier Inventories</button>
             </div>
         </div>
 
         <!-- Row: Display init status -->
         <div class="row mt-2" id="initRow">
-            <div class="col-lg-5 col-md-6 m-auto card p-4">
+            <div class="col-lg-5 col-md-6 m-auto card p-2">
                 {% if initStatusElement %}
                     <p id="initStatusElement" class="text-left">{{ initStatusElement | safe }}</p>
                 {% endif %}
@@ -53,7 +53,7 @@
 
         <!-- Row: Search Data  -->
         <div class="row mt-4">
-            <div class="col-lg-5 col-md-6 m-auto card p-4">
+            <div class="col-lg-5 col-md-6 m-auto card p-2">
                 <form action="{{ request.path }}" method="POST" class="card-body">
                     {{ form.csrf_token }}
 
@@ -70,7 +70,7 @@
                     {% endwith %}
 
                     <div class="text-center">
-                        <h2>Search for plants by name...</h2>
+                        <h4>Search for plants by name...</h4>
                     </div>
 
                     <!-- Enter search text -->
@@ -85,7 +85,7 @@
 
                     <!-- Submit search button -->
                     <div class="text-center">
-                        <div class="d-grid gap-2">
+                        <div class="d-grid gap-0">
                             <button type="submit" id="searchButton" class="btn btn-block btn-primary mb-3"> Submit Search </button>
                         </div>
                     </div>
@@ -97,8 +97,23 @@
         {% if tables %}
             <div class="row mt-2" id="searchResults">
                 {% for table_name, table_data in tables.items() %}
+                <!-- Retrieve table URL using table_name key -->
+                {% if tables_url %}
+                    {% set table_url = tables_url[table_name] %}
+                {% else %}
+                    {% set table_url = none %}
+                {% endif %}
                     <div class="col-12 mt-4">
-                        <h5 class="text-center small-text-table-header">{{ table_name }}</h5>
+                        <h5 class="text-center small-text-table-header">
+                            <!-- Check if table_url is None -->
+                            {% if table_url %}
+                                <!-- If table_url is not None, display as a link -->
+                                <a href="{{ table_url }}" target="_blank" rel="noopener noreferrer">{{ table_name }}</a>
+                            {% else %}
+                                <!-- If table_url is None, display just the name -->
+                                {{ table_name }}
+                            {% endif %}                        
+                        </h5>
                         <div class="table-responsive centered-table-container">
                             <table class="small-text-table">
                                 <!-- Table Header -->
