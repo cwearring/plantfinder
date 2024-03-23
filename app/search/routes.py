@@ -13,12 +13,15 @@ def search_data():
     search_term = data.get('searchQuery')
 
     # Call the searchData function
-    is_html = True  # Set this according to your requirements
-    result = searchData(search_term, is_html)
+    is_html = True  # use to format detailed status in init_details db field
+    result = searchData(search_term, is_html) if len(search_term) > 0 else None      
 
     if result:
-        table = result[0]
-        table_url = result[1]
+        table = result[0] if len(result[0]) > 0 else None
+        table_url = result[1] if len(result[1]) > 0 else None
+    else:
+        table = None 
+        table_url = None 
 
     return jsonify({'table': table,
                     'table_url' : table_url}

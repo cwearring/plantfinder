@@ -24,6 +24,16 @@ class Config:
     # docker run --name mypostgres --network mynetwork -e POSTGRES_PASSWORD=cwearring -p 5432:5432 -d postgres
     SQLALCHEMY_DATABASE_URI = 'postgresql+psycopg2://postgres:cwearring@localhost:5432/postgres'
 
+    # Connection pool settings
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_size': 10,
+        'max_overflow': 5,
+        'pool_timeout': 30,
+        'pool_recycle': 1800,
+        # 'echo_pool': 'debug', # uncomment to get verbose logging messages 
+        'pool_pre_ping': True,
+    }
+
 class DockerLocalConfig(Config):
     DEBUG = True
     SQLALCHEMY_DATABASE_URI = 'postgresql+psycopg2://postgres:cwearring@mypostgres:5432/postgres'
