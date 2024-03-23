@@ -30,10 +30,6 @@ def index():
         # Generate a unique identifier and store it in the session
         session['session_id'] = str(uuid.uuid4())
 
-    # Retrieve session data from the database using the unique identifier
-    # session_id = session['session_id']
-    # session_data = SessionData.query.get(session_id)
-
     # check for previously existing user and org data  
     if current_user.is_authenticated:
         user_org = Organization.query.get(current_user.org_id)

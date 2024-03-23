@@ -1,42 +1,25 @@
-
-from flask import Blueprint, jsonify, session, render_template, request, current_app, redirect, flash, url_for
+from flask import Blueprint, jsonify, request, current_app, redirect, flash, url_for
 
 from app.search import bp
-from app.main.forms import SearchForm
-from app.models import User, db
+from app.search.search import searchData
 
-@bp.route('/search_data/', methods=("GET", "POST"), strict_slashes=False)
+@bp.route('/search', methods=["POST"], strict_slashes=False)
 def search_data():
 
     # try deferred import 
-    from app.search import searchData
+    # from app.search import searchData
 
-    # create an instance from the form class
-    form = SearchForm()
+    data = request.json
+    search_term = data.get('searchQuery')
 
-    if form.validate_on_submit():
-        try:
-            search_term = form.search_text.data
-            # Call the searchData function
-            is_html = True  # Set this according to your requirements
-            result = searchData(search_term, is_html)
-            return result
-        except Exception as e:
-            flash(e, "Error in SearchForm.search_text.data")
+    # Call the searchData function
+    is_html = True  # Set this according to your requirements
+    result = searchData(search_term, is_html)
 
-    return render_template("home.html",
-        form=form,
-        text="Search",
-        title="Search",
-        btn_action="Search String"
-        )
+    if result:
+        table = result[0]
+        table_url = result[1]
 
-@bp.route('/xxxxsearch_data',  methods=("GET", "POST"))
-def xxxsearch_data():
-    # deferred load 
-    from app.search import searchData
-
-    search_text = request.form.get('search_text')
-    results = searchData(search_text)
-    return jsonify(results=results)
-
+    return jsonify({'table': table,
+                    'table_url' : table_url}
+                    )

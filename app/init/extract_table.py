@@ -101,24 +101,8 @@ MAX_RETRY_COUNT = 5
 BACKOFF_FACTOR = 1.5
 RETRY_STATUS_CODES = (503,)
 
-# holding area for unused 
-def header_word_score(table:list = None):
-    # define a list of header words from the docs 
-    header_words = ['Product', 'Variety', 'Size', 'Colour', 'Order Qty', 'Cost', 'Description', 'Code', 'Name',\
-                'Category','Your Price', 'Price', 'Status', 'Zone', 'Catalog $', 'Pots/Tray', 'Amount',\
-                'WH', 'Botanical Name', 'E-LINE', 'Available','Order', 'Total', 'PIN', 'UPC','Latin Name',\
-                'Available Units','QTY', 'Notes','Avail QTY','Order Qty','Plant Name','Common Name','Sale Price',\
-                'Pot Size','List','Net','Comments','AVL','Sku','Case Qty','Packaging', "Pots Ordered", 'SIZE 1', 'SIZE 2']
- 
-    # Initial check for null string
-    if not table:
-        return None
 
-    return None
-
-def generate_hash(text):
-    hash_object = hashlib.sha256(text.encode())
-    return hash_object.hexdigest()
+# start of useful functions 
 
 def string_to_list(string: str) -> List:
     """
@@ -145,160 +129,6 @@ def string_to_list(string: str) -> List:
         raise ValueError("The evaluated expression is not a list")
 
     return result
-
-def extract_text_within_brackets(input_string: str) -> List[str]:
-    """
-    Extracts and returns all text found within square brackets in a given string.
-
-    Parameters:
-    - input_string (str): The string from which to extract text within square brackets.
-
-    Returns:
-    - List[str]: A list of strings found within square brackets. If no text is found
-      within brackets, returns an empty list.
-
-    Examples:
-    >>> extract_text_within_brackets("Example [text] within [brackets].")
-    ['text', 'brackets']
-    >>> extract_text_within_brackets("No brackets here.")
-    []
-    """
-    
-    if not isinstance(input_string, str):
-        raise ValueError("Input must be a string.")
-    
-    # Define the regex pattern to find text within square brackets
-    pattern = r'\[(.*?)\]'
-
-    # Use re.findall() to find all occurrences in the string
-    matches = re.findall(pattern, input_string)
-
-    return matches
-
-def create_class_from_df(df, class_name, p_key):
-    '''
-    Dynamically create a SQLAlchemy class from a dataframe 
-    '''
-    try:
-        type_mapping = {
-            'int64': db.Integer,
-            'float64': db.Float,
-            'object': db.String  # Assuming all 'object' types in this DataFrame are strings
-        }
-
-        # attributes = {col: Column(type_mapping[str(df[col].dtype)]) for col in df.columns}
-
-        # Adding a primary key column
-        # attributes = {'id': Column(db.Integer, primary_key=True, autoincrement=True)}
-        attributes = {
-            '__tablename__': class_name.lower(),  # Table name, typically lowercase
-            p_key : Column(db.String(64), primary_key=True),
-            '__table_args__': {'extend_existing': True}  # Add this line
-        }
-
-        # Add columns from DataFrame
-        for col in [c for c in df.columns if c != p_key]:
-            attributes[col] = Column(type_mapping[str(df[col].dtype)])
-
-        return type(class_name, (db.Model,), attributes)
-
-    except Exception as e:
-        # Optionally, log the error here - extend_existing=True
-        # log.error(f"Error in save_class_in_session: {str(e)}")
-
-        # Raise an exception with a descriptive message
-        raise ValueError(f"An error occurred in create_class_from_df: {str(e)}")
-    
-def save_class_in_session(df, class_name, p_key):
-    '''
-        make a sqlalchemy ORM class for each dataframe - add column = id:int as primary key
-    '''
-    jnk=0 #     print(current_app.name)
-
-    """# save a sqlalchemy ORM class for each dataframe - add column = id:int as primary key
-    status = save_class_in_session(df=file_table, class_name=filetoken, p_key=p_key)
-
-    if status:
-        logging.info(f"Created ORM class and db table {filetoken}")
-        # yield f"Created ORM class and db table {filetoken} at {datetime.now():%b %d %I:%M %p}"
-        yield f"Updated {len(file_table)} rows for {file_data['filename']} at {datetime.now():%b %d %I:%M %p}"
-    else:
-        logging.info(f"Hit an error save_class_in_session for {file_data['filename']}")
-        yield f"Error in save_class_in_session() for {file_data['filename']}"
-    """
-    try:
-        #with current_app.app_context():
-        # Get an inspector object from the database connection
-        inspector = inspect(db.engine)
-
-        # Create ORM class from DataFrame
-        DynamicClass = \
-            create_class_from_df(df, class_name, p_key )
-
-        # Check if the table already exists to avoid overwriting
-        if not inspector.has_table(DynamicClass.__tablename__):
-                DynamicClass.__table__.create(bind=db.engine)
-
-        # Iterate over DataFrame rows
-        for _, row in df.iterrows():
-            # Create an instance of the ORM class
-            obj = DynamicClass(**row.to_dict())
-
-            # Add the instance to the session
-            db.session.merge(obj)
-            
-        # Commit the session to save changes to the database
-        db.session.commit()
-
-        return True
-    
-    except Exception as e:
-        # Optionally, log the error here
-        # log.error(f"Error in save_class_in_session: {str(e)}")
-
-        # Return a status indicating an error occurred and include error details
-        raise ValueError(f"An error occurred in save_class_in_session: {str(e)}")
-    
-        return {"status": "error", "message": str(e)}
-    
-    return 
-
-def cell_diff(cells: list) -> list:
-    """
-    Calculate the element-wise differences between consecutive vectors in a list.
-    
-    Parameters:
-    - cells: A list of lists (vectors) where each inner list contains numerical values.
-    
-    Returns:
-    - A list of lists containing the rounded element-wise differences between consecutive vectors.
-    
-    Raises:
-    - ValueError: If 'cells' contains less than two vectors or if any vector contains non-numeric values.
-    - TypeError: If 'cells' is not a list of lists.
-    """
-    
-    # Check if 'cells' is a list of lists
-    if not all(isinstance(cell, tuple) for cell in cells):
-        raise TypeError("All elements in 'cells' must be lists.")
-    
-    # Check if 'cells' has at least two vectors
-    if len(cells) < 2:
-        raise ValueError("The 'cells' list must contain at least two vectors to compute differences.")
-    
-    # Ensure all elements in each vector are numeric
-    for vec in cells:
-        if not all(isinstance(num, (int, float)) for num in vec):
-            raise ValueError("All elements in each vector must be numeric.")
-
-    def vec_diff(vec1, vec2):
-        """Calculate and return the rounded element-wise difference between two vectors."""
-        return [round(v1 - v2, 2) for v1, v2 in zip(vec1, vec2)]
-    
-    # Compute the differences between consecutive vectors
-    c_diff = [vec_diff(cells[n-1], cells[n]) for n in range(1, len(cells))]
-
-    return c_diff
 
 def find_indices_within_percentage(arr, percentage):
     """
@@ -333,99 +163,49 @@ def find_indices_within_percentage(arr, percentage):
     # Return None if no such trio is found
     return None
 
-def compare_absolute_values_at_index(tuples_list, index, float_val):
+def find_longest_sorted_chain(tuples_list):
     """
-    Compares absolute values rounded to 2 decimals to a specified index in each tuple of a list against the absolute value of a float.
+    Finds the longest continuous chain of tuples where the second value of one tuple
+    equals the first value of the next tuple. The input list is first sorted by the first
+    element of each tuple as the primary key and the second element as the secondary key.
 
     Parameters:
-    - tuples_list: List of tuples containing numerical values.
-    - index: The index to check in each tuple.
-    - float_val: The float value to compare against.
+    - tuples_list: A list of numeric tuples of length 2.
 
     Returns:
-    - A list of boolean values, True if the absolute value at the specified index is equal to the absolute value of the float,
-      False otherwise.
-      
+    - A list containing the longest continuous chain of tuples meeting the above criteria.
+
     Raises:
-    - IndexError: If the specified index is out of range for any tuple.
+    - ValueError: If the input list contains items that are not tuples or tuples of incorrect length.
     """
-    result = []
-    for tuple_val in tuples_list:
-        try:
-            # Calculate the absolute value of the difference and compare it within 5% of the float_val's absolute value
-            difference = abs(abs(tuple_val[index]) - abs(float_val))
-            tolerance = abs(float_val) * 0.05
-            result.append(difference <= tolerance)
-        except IndexError:
-            raise IndexError(f"Index {index} is out of range for the tuple {tuple_val}.")
+
+    # Validate input list
+    if not all(isinstance(item, tuple) and len(item) == 2 for item in tuples_list):
+        raise ValueError("All items in the input list must be tuples of length 2.")
     
-    return result
+    # Sort tuples by the first value primarily and the second value secondarily
+    sorted_tuples = sorted(tuples_list, key=lambda x: (x[0], x[1]))
 
-def sort_tuples_as_grid(tuples_list):
-    # First, sort the list of tuples to ensure they are in ascending order based on the first element
-    sorted_list = sorted(tuples_list, key=lambda x: x[0])
-    
-    # Initialize a list to hold the final sequence of tuples
-    final_sequence = []
-    
-    # Iterate through the sorted list to apply the criteria for the sequence
-    for i in range(len(sorted_list) - 1):
-        # Check if the current tuple and the next tuple meet the criteria
-        if abs(sorted_list[i][1] - sorted_list[i + 1][0]) < 0.1:
-            # If the current tuple is not in the final sequence, add it
-            if not final_sequence or final_sequence[-1] != sorted_list[i]:
-                final_sequence.append(sorted_list[i])
-            # Add the next tuple as it meets the criteria with the current tuple
-            final_sequence.append(sorted_list[i + 1])
-    
-    # Return the final sequence of tuples
-    return final_sequence
+    def find_chain(start_index):
+        """Finds a continuous chain starting from the given index in the sorted list."""
+        chain = [sorted_tuples[start_index]]
+        last_value = sorted_tuples[start_index][1]
 
-# start of useful functions 
+        for next_tuple in sorted_tuples[start_index + 1:]:
+            if next_tuple[0] == last_value:
+                chain.append(next_tuple)
+                last_value = next_tuple[1]
 
-def get_header_match_table_cells(fitz_page=None, fitz_table=None):
-    """
-    Extracts header text matches for each table cell from a provided page and table object.
+        return chain
 
-    Parameters:
-    - fitz_page: A page object from PyMuPDF (fitz) library, containing the table.
-    - fitz_table: A table object, typically extracted from a page, which contains cells.
+    longest_chain = []
+    # Iterate over sorted tuples to find the longest chain
+    for i in range(len(sorted_tuples)):
+        current_chain = find_chain(i)
+        if len(current_chain) > len(longest_chain):
+            longest_chain = current_chain
 
-    Returns:
-    - A tuple containing the table header grid and the start index of the table body,
-      or None if an error occurs or input parameters are invalid.
-    """
-    if fitz_table is None or fitz_page is None:
-        logging.error("Invalid input: 'fitz_table' or 'fitz_page' is None.")
-        return None
-
-    try:
-        hdr = fitz_table.header
-        hdr_0 = hdr.cells[0]
-
-        first_row = 0 if fitz_table.header.external else 1
-
-        cell_d = cell_diff(fitz_table.cells)
-        tbl_start = find_indices_within_percentage([x[1] for x in cell_d], 0.02)
-        grid_y = round(sum([abs(x[1]) for x in cell_d[tbl_start[0]:tbl_start[2]]]) / 2, 1)
-
-        cell_x = set([(x[0], x[2]) for x in fitz_table.cells])
-        grid_x = sort_tuples_as_grid(cell_x)
-
-        tbl_hdr_rows = []
-        for row in range(5):  # Iterate over an arbitrary number of rows above grid start
-            y_row = (fitz_table.cells[tbl_start[0]][1] - row * grid_y,
-                     fitz_table.cells[tbl_start[0]][1] - (row + 1) * grid_y)
-            tbl_cells = [(x[0], y_row[1], x[1], y_row[0]) for x in grid_x]
-            tbl_hdr = [fitz_page.get_textbox(c).strip() for c in tbl_cells]
-            tbl_hdr_rows.append(tbl_hdr)
-
-        tbl_hdr_grid = tbl_hdr_rows[::-1]
-        return tbl_hdr_grid, tbl_start[0]
-
-    except Exception as e:
-        logging.error(f"An error occurred: {str(e)}")
-        return None
+    return longest_chain
 
 def convert_epoch_to_datetime(epoch_seconds):
     """
@@ -865,6 +645,111 @@ def get_firstpage_tables_as_list(doc=None):
 
     return tbl_out, table_strategy, tbls
 
+def find_matching_index_ignore_case(list1, list2):
+    """
+    Finds the index of the first list in list2 where any element of list1 matches any element of the list at that index,
+    ignoring case. This function also handles NaN values which might be present in the lists derived from pandas.
+
+    Parameters:
+    - list1 (list of str): List of strings to search for.
+    - list2 (list of list of str): List of lists where each entry is a list of strings.
+
+    Returns:
+    - int: The index of the first matching list in list2, or None if no match is found.
+    """
+    # Convert all items in list1 to lowercase for case-insensitive comparison
+    list1_lower = [item.lower() for item in list1 if item is not pd.NA and pd.notna(item)]
+    for index, sublist in enumerate(list2):
+        # Convert all items in the current sublist to lowercase, skipping NaN values
+        sublist_lower = [str(item).lower() for item in sublist if item is not pd.NA and pd.notna(item)]
+        if any(item in sublist_lower for item in list1_lower):
+            return index
+    return None
+
+def cell_diff(cells: list) -> list:
+    """
+    Calculate the element-wise differences between consecutive vectors in a list.
+    
+    Parameters:
+    - cells: A list of lists (vectors) where each inner list contains numerical values.
+    
+    Returns:
+    - A list of lists containing the rounded element-wise differences between consecutive vectors.
+    
+    Raises:
+    - ValueError: If 'cells' contains less than two vectors or if any vector contains non-numeric values.
+    - TypeError: If 'cells' is not a list of lists.
+    """
+    
+    # Check if 'cells' is a list of lists
+    if not all(isinstance(cell, tuple) for cell in cells):
+        raise TypeError("All elements in 'cells' must be lists.")
+    
+    # Check if 'cells' has at least two vectors
+    if len(cells) < 2:
+        raise ValueError("The 'cells' list must contain at least two vectors to compute differences.")
+    
+    # Ensure all elements in each vector are numeric
+    for vec in cells:
+        if not all(isinstance(num, (int, float)) for num in vec):
+            raise ValueError("All elements in each vector must be numeric.")
+
+    def vec_diff(vec1, vec2):
+        """Calculate and return the rounded element-wise difference between two vectors."""
+        return [round(v1 - v2, 2) for v1, v2 in zip(vec1, vec2)]
+    
+    # Compute the differences between consecutive vectors
+    c_diff = [vec_diff(cells[n-1], cells[n]) for n in range(1, len(cells))]
+
+    return c_diff
+
+def get_header_match_table_cells(fitz_page=None, fitz_table=None):
+    """
+    Extracts header text matches for each table cell from a provided page and table object.
+
+    Parameters:
+    - fitz_page: A page object from PyMuPDF (fitz) library, containing the table.
+    - fitz_table: A table object, typically extracted from a page, which contains cells.
+
+    Returns:
+    - A tuple containing the table header grid and the start index of the table body,
+      or None if an error occurs or input parameters are invalid.
+    """
+    if fitz_table is None or fitz_page is None:
+        logging.error("Invalid input: 'fitz_table' or 'fitz_page' is None.")
+        return None
+
+    try:
+        hdr = fitz_table.header
+        hdr_0 = hdr.cells[0]
+
+        first_row = 0 if fitz_table.header.external else 1
+
+        cell_d = cell_diff(fitz_table.cells)
+        tbl_start = find_indices_within_percentage([x[1] for x in cell_d], 0.02)
+        grid_y = round(sum([abs(x[1]) for x in cell_d[tbl_start[0]:tbl_start[2]]]) / 2, 1)
+
+        cell_x = set([(x[0], x[2]) for x in fitz_table.cells])
+        try:
+            grid_x = find_longest_sorted_chain(cell_x)
+        except ValueError as e:
+            logging.error(f"find_longest_sorted_chain error {e}")
+
+        tbl_hdr_rows = []
+        for row in range(5):  # Iterate over an arbitrary number of rows above grid start
+            y_row = (fitz_table.cells[tbl_start[0]][1] - row * grid_y,
+                     fitz_table.cells[tbl_start[0]][1] - (row + 1) * grid_y)
+            tbl_cells = [(x[0], y_row[1], x[1], y_row[0]) for x in grid_x]
+            tbl_hdr = [fitz_page.get_textbox(c).strip() for c in tbl_cells]
+            tbl_hdr_rows.append(tbl_hdr)
+
+        tbl_hdr_grid = tbl_hdr_rows[::-1]
+        return tbl_hdr_grid, tbl_start[0]
+
+    except Exception as e:
+        logging.error(f"An error occurred: {str(e)}")
+        return None
+
 def get_bestguess_table_header(table_as_list = None):
     '''
     Uses embedding and LLM to guess the best header row
@@ -929,9 +814,10 @@ def get_bestguess_table_header(table_as_list = None):
             of plants with columns as a python list of length {numcols}. 
 
             Example table column headings:
-            5 column  ['Name', 'Latin Name', 'Price', 'Available Qty', 'Order Qty']
-            8 column  [ "Product","SIZE1","SIZE2","PRICE", "AVL",  "COMMENTS", "ORDER", "Total"]
-            7 column  ["Category", "WH", "Code", "Botantical Name", "size", "Price", "Available"]
+            for 2 column table header = ['Description', 'A']
+            for 5 column table header = ['Name', 'Latin Name', 'Price', 'Available Qty', 'Order Qty']
+            for 8 column table header = [ "Product","SIZE1","SIZE2","PRICE", "AVL",  "COMMENTS", "ORDER", "Total"]
+            for 7 column table header = ["Category", "WH", "Code", "Botantical Name", "size", "Price", "Available"]
 
             Return an existing row. Do not make up rows.
             """
@@ -940,19 +826,18 @@ def get_bestguess_table_header(table_as_list = None):
             header_rownum = int(response.source_nodes[0].id_)
             header_node_text = response.source_nodes[0].text
             header_raw = table_as_list[header_rownum]
-            
+            header_gpt = string_to_list(response.response)
+
             # correct for special case failure of table header guess 
-            # Total Hack - tried using the GPT but it failed miserably
-            # we have a matching number of columns to the more frequently occuring table row dimension
-            if len(header_raw) == numcols: 
-                if header_rownum-table_row_start_guess < 10:
-                    # then we did not pick a row that is too deep in the table structure - total hack 
-                    header_guess = ['TableName'] + [str(x).replace(' ','').replace('\n','_').replace('(','_').replace(')','')
-                                            for x in header_raw] + ['Text']
-                else:
-                    # we think the row is too far down in the table 
-                    header_guess = ['TableName'] + [f'col_{n}' for n in range(0,numcols)] + ['Text']
-                    header_rownum = table_row_start_guess # start of the frequently ocurring table width 
+            # try the gpt suggestion first 
+            if len(header_gpt) == numcols: 
+                header_guess = ['TableName'] + header_gpt + ['Text']
+                gpt_hdr_index = find_matching_index_ignore_case(header_gpt, table_as_list)
+                if gpt_hdr_index is not None:
+                    header_rownum=gpt_hdr_index
+            elif len(header_raw) == numcols:
+                header_guess = ['TableName'] + [str(x).replace(' ','').replace('\n','_').replace('(','_').replace(')','')
+                        for x in header_raw] + ['Text']
             else:
                 # this excludes header guesses with a different number of headings 
                 header_guess = ['TableName'] + [f'col_{n}' for n in range(0,numcols)] + ['Text']
@@ -1077,6 +962,8 @@ def get_file_table_pdf(file_data:dict = None):
                         # is the header already in the table array?
                         if fitz_header.external:
                             fitz_header_aslist = fitz_header.names
+                            tables_aslist = [fitz_header.names] + tables_aslist
+                            break
                         else:
                             break
                     else:
@@ -1349,8 +1236,7 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
             yield('  ' + str(tmp))
 
         # loop the files, and extract tables  
-        # for filename in filenames:
-        # for full_filename in [filenames[0]]:
+        # for full_filename in [f for n,f in enumerate(filenames) if n in [17]]:
         for full_filename in filenames: # filenames[4:6]
             # get the dirpath, filename and file type
             file_data = parse_fullfilename(full_filename = full_filename)
@@ -1401,7 +1287,6 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
     except SQLAlchemyError as e:
         logging.error(f"Database operation failed: {e}")
         db.session.rollback()
-
 
 def background_task(app, dirpath, user_id, useDropbox=False):
     """
@@ -1465,5 +1350,3 @@ def background_task(app, dirpath, user_id, useDropbox=False):
             logging.error(f"Database operation failed: {e}")
         except Exception as e:
             logging.error(f"Unexpected error: {e}")
-
-

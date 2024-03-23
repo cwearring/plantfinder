@@ -7,6 +7,7 @@
         font-size: 0.7rem; /* Search results font size relative to base browser font */
         font-weight: bold; /* Makes the text bold */
     }
+
     .small-text-table {
         font-size: 0.6rem; /* Search results font size relative to base browser font */
         width: 100%; /* Ensure the table spans the full width of its container */
@@ -18,11 +19,11 @@
         text-align: left; /* Left-justify text in each cell */
         padding: 8px; /* Add some padding for text inside cells */
     }
+
     .centered-table-container {
         display: flex;
         justify-content: center;
     }
-    
 </style>
 
 <div class="container py-4 text-center">
@@ -31,6 +32,7 @@
 
         <h2>Welcome to the Woodland Plantfinder </h2>
         You are logged in as user: {{ current_user.username }} &nbsp;&nbsp;
+        
         <a href="{{url_for('auth.logout')}}">Logout</a>
 
         <!-- Row: Init Data Button -->
@@ -49,10 +51,10 @@
             </div>
         </div>
 
-        <!-- Row: Search Form  -->
+        <!-- Row: Search Data  -->
         <div class="row mt-4">
             <div class="col-lg-5 col-md-6 m-auto card p-2">
-                <form id="searchForm"  action="{{ request.path }}" method="POST" class="card-body">
+                <form action="{{ request.path }}" method="POST" class="card-body">
                     {{ form.csrf_token }}
 
                     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -91,10 +93,60 @@
             </div>
         </div>
 
-        <!-- Loading Message -->
-        <div id="loading" style="display:none;">Searching...</div>
-        <!-- Search Results Placeholder -->
-        <div id="searchResults"></div>
+        <!-- Display Results box if not None   -->
+        {% if tables %}
+            <div class="row mt-2" id="searchResults">
+                {% for table_name, table_data in tables.items() %}
+                <!-- Retrieve table URL using table_name key -->
+                {% if tables_url %}
+                    {% set table_url = tables_url[table_name] %}
+                {% else %}
+                    {% set table_url = none %}
+                {% endif %}
+                    <div class="col-12 mt-4">
+                        <h5 class="text-center small-text-table-header">
+                            <!-- Check if table_url is None -->
+                            {% if table_url %}
+                                <!-- If table_url is not None, display as a link -->
+                                <a href="{{ table_url }}" target="_blank" rel="noopener noreferrer">{{ table_name }}</a>
+                            {% else %}
+                                <!-- If table_url is None, display just the name -->
+                                {{ table_name }}
+                            {% endif %}                        
+                        </h5>
+                        <div class="table-responsive centered-table-container">
+                            <table class="small-text-table">
+                                <!-- Table Header -->
+                                <thead>
+                                    <tr>
+                                        {% for header in table_data.keys() %}
+                                            <th>{{ header }}</th>
+                                        {% endfor %}
+                                    </tr>
+                                </thead>
+                                <!-- Table Body -->
+                                <tbody>
+                                    {% set row_count = (table_data.values()|list)[0]|length %}
+                                    {% for row_index in range(row_count) %}
+                                        <tr>
+                                            {% for header, column_list in table_data.items() %}
+                                                <td>{{ column_list[row_index] }}</td>
+                                            {% endfor %}
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="row mt-2" id="searchResultsRow">
+                <div class="col-lg-5 col-md-6 m-auto card p-4">
+                    <p class="text-left">No Search Results</p>
+                </div>
+            </div>
+        {% endif %}
   
     {% else %}
         <h1>  {{ title }}  </h1>
@@ -164,85 +216,7 @@
     });
 </script>
 
-<!-- AJAX Script for Form Submission -->
-<script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const searchForm = document.getElementById("searchForm");
-        const loadingIndicator = document.getElementById("loading");
-        const resultsContainer = document.getElementById("searchResults");
-    
-        searchForm.onsubmit = function(event) {
-            event.preventDefault();
-            const searchQuery = document.querySelector("[name='search_text']").value;
-            loadingIndicator.style.display = 'block';
-    
-            fetch("{{ url_for('search.search_data') }}", { // Ensure this line is processed by Flask.
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({searchQuery}),
-            })
-            .then(response => response.json())
-            .then(data => {
-                loadingIndicator.style.display = 'none';
-                resultsContainer.innerHTML = ''; // Clear previous results
-    
-                if (data.table && data.table_url) {
-                    Object.entries(data.table).forEach(([tableName, tableData]) => {
-                        const tableURL = data.table_url[tableName];
-    
-                        const div = document.createElement('div');
-                        div.className = 'col-12 mt-4';
-    
-                        const header = document.createElement('h5');
-                        header.className = 'text-center small-text-table-header';
-                        const link = document.createElement('a');
-                        link.href = tableURL;
-                        link.textContent = tableName;
-                        link.target = '_blank';
-                        link.rel = 'noopener noreferrer';
-                        header.appendChild(link);
-                        div.appendChild(header);
-    
-                        const table = document.createElement('table');
-                        table.className = 'small-text-table';
-                        const thead = document.createElement('thead');
-                        const headerRow = document.createElement('tr');
-    
-                        Object.keys(tableData).forEach(header => {
-                            const th = document.createElement('th');
-                            th.textContent = header;
-                            headerRow.appendChild(th);
-                        });
-    
-                        thead.appendChild(headerRow);
-                        table.appendChild(thead);
-    
-                        const tbody = document.createElement('tbody');
-                        const numRows = Object.values(tableData)[0].length;
-                        for (let rowIndex = 0; rowIndex < numRows; rowIndex++) {
-                            const tr = document.createElement('tr');
-                            Object.keys(tableData).forEach(header => {
-                                const td = document.createElement('td');
-                                td.textContent = tableData[header][rowIndex];
-                                tr.appendChild(td);
-                            });
-                            tbody.appendChild(tr);
-                        }
-                        table.appendChild(tbody);
-                        div.appendChild(table);
-                        resultsContainer.appendChild(div);
-                    });
-                } else {
-                    resultsContainer.innerHTML = '<p>No Search Results</p>';
-                }
-            })
-            .catch((error) => {
-                console.error('Error:', error);
-                loadingIndicator.style.display = 'none';
-                resultsContainer.innerHTML = '<p>Failed to load search results. Please try again later.</p>';
-            });
-        };
-    });
-    </script> 
+
+
 
 {% endblock %}
