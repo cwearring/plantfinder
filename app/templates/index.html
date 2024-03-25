@@ -3,6 +3,16 @@
 {% block content%}
 <!-- define some styles for the results table display -->
 <style>
+    .preserve-whitespace {
+        white-space: pre-wrap; /* CSS property to preserve whitespace and wrap text */
+    }
+    .small-text-bold {
+        font-size: 0.7rem; /* Smaller, bold text */
+        font-weight: bold;
+    }
+    .small-text {
+        font-size: 0.6rem; /* Smaller text */
+    }
     .small-text-table-header {
         font-size: 0.7rem; /* Search results font size relative to base browser font */
         font-weight: bold; /* Makes the text bold */
@@ -28,9 +38,9 @@
 <div class="container py-4 text-center">
 
     {% if current_user.is_authenticated %}
-
+        
         <h2>Welcome to the Woodland Plantfinder </h2>
-        You are logged in as user: {{ current_user.username }} &nbsp;&nbsp;
+        You are logged in as user: {{ current_user.username }} from {{user_org.name}}&nbsp;&nbsp;
         <a href="{{url_for('auth.logout')}}">Logout</a>
 
         <!-- Row: Init Data Button -->
@@ -45,27 +55,16 @@
             <div class="col-lg-5 col-md-6 m-auto card p-2">
                 {% if initStatusElement %}
                     <p id="initStatusElement" class="text-left">{{ initStatusElement | safe }}</p>
-                {% endif %}
+                    <a href="#" data-id="{{ user_org.id }}" onclick="fetchDetails(this.getAttribute('data-id'))">Show Details</a>
+                    {% endif %}
             </div>
         </div>
 
         <!-- Row: Search Form  -->
         <div class="row mt-4">
             <div class="col-lg-5 col-md-6 m-auto card p-2">
-                <form id="searchForm"  action="{{ request.path }}" method="POST" class="card-body">
+                <form id="searchForm"  action="{{ url_for('search.search_data') }}" method="POST" class="card-body">
                     {{ form.csrf_token }}
-
-                    {% with messages = get_flashed_messages(with_categories=true) %}
-                    <!-- Categories: success (green), info (blue), warning (yellow), danger (red) -->
-                    {% if messages %}
-                    {% for category, message in messages %}
-                    <div class="alert alert-{{category}} alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                    </div>
-                    {% endfor %}
-                    {% endif %}
-                    {% endwith %}
 
                     <div class="text-center">
                         <h4>Search for plants by name...</h4>
@@ -75,6 +74,7 @@
                     <div class="form-group mb-3">
                         {{ form.search_text(class_="form-control", placeholder="Enter search text")}}
                     </div>
+                    
                     {% for error in form.search_text.errors %}
                     <div class="alert alert-warning alert-dismissible fade show" role="alert">
                         {{ error }}
@@ -95,7 +95,24 @@
         <div id="loading" style="display:none;">Searching...</div>
         <!-- Search Results Placeholder -->
         <div id="searchResults"></div>
-  
+
+          <!-- Modal -->
+        <div class="modal fade" id="detailsModal" tabindex="-1" role="dialog" aria-labelledby="detailsModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg" role="document">
+                <div class="modal-content">
+                    <div class="modal-header small-text-bold">
+                        <h5 class="Init Details" id="detailsModalLabel">Details</h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body small-text preserve-whitespace text-start" >
+                        <!-- Details will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
     {% else %}
         <h1>  {{ title }}  </h1>
         <h3>Search supplier inventories for the plants you need</h3>
@@ -104,150 +121,170 @@
 
 </div>
 
-<!-- JavaScript to call the initData function -->
-<script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
 <script>
-    document.addEventListener("DOMContentLoaded", function () {
-        // Get the button and input elements
-        var initButton = document.getElementById("initButton");
-        // var initStatus = document.getElementById("init_status");
-        var initRow = document.getElementById("initRow");
-        // the status url from flask routes 
-        var statusUrl = "{{ url_for('init.status') }}";
-
-        // Add a click event listener to the button
-        initButton.addEventListener("click", function () {
-            // Call the Flask route with an AJAX request
-            console.log('Entered the initdata event')
-            console.log('Name {{current_user.username}}')
-            console.log('is_authenticated {{current_user.is_authenticated}}')
-
-            $.ajax({
-                url: "{{ url_for('init.index') }}",
-                type: "POST",
-                xhrFields: {
-                    withCredentials: true
-                },
-                success: function (response) {
-                    // Assign each entry to a distinct JavaScript variable
-                    var status = response.status;
-
-                    // Update the corresponding elements with the new variables
-                    var initStatusElement = document.getElementById("initStatusElement");
-                    initStatusElement.textContent = status;
-
-                    // Redirect to the status page on successful response
-                    window.location.href = statusUrl;  
-
-                    // Show the results row
-                    initRow.style.display = "block";
-                },
-                error: function (error) {
-                    console.error("Error:", error);
-                }
-            });
+// Script for Init Details Modal
+    function fetchDetails(entryId) {
+    fetch(`/details/${entryId}`)
+        .then(response => {
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        return response.json(); // Parse the JSON from the response
+        })
+        .then(data => {
+        // Assuming 'data.init_details' is the key where your desired info is stored
+        document.querySelector('.modal-body').textContent = data.init_details; // Update modal content
+        new bootstrap.Modal(document.getElementById('detailsModal')).show(); // Show the modal using Bootstrap's Modal class
+        })
+        .catch(error => {
+        console.error('There has been a problem with your fetch operation:', error);
+        // Optionally, provide user feedback about the error here
         });
-    });
-
-    document.addEventListener("DOMContentLoaded", function() {
-        // Assuming the search text input has a specific class or id, e.g., class="form-control"
-        var searchInput = document.querySelector('.form-control');
-
-        searchInput.addEventListener('keypress', function(e) {
-            // Check if the key pressed is the Enter key
-            if (e.key === 'Enter') {
-                e.preventDefault(); // Prevent default to stop any double-action
-                this.form.submit(); // Submit the form associated with the input
-                document.querySelector('form').submit();
-            }
-        });
-    });
-</script>
-
-<!-- AJAX Script for Form Submission -->
-<script>
+    }
+// Listeners for form submission
     document.addEventListener('DOMContentLoaded', () => {
         const searchForm = document.getElementById("searchForm");
         const loadingIndicator = document.getElementById("loading");
         const resultsContainer = document.getElementById("searchResults");
-    
-        searchForm.onsubmit = function(event) {
-            event.preventDefault();
-            const searchQuery = document.querySelector("[name='search_text']").value;
 
-            // Clear the searchResults div to remove previous search results
-            resultsContainer.innerHTML = ''; // Add this line
+        const initButton = document.getElementById("initButton");
+        const initRow = document.getElementById("initRow");
+        const statusUrl = "{{ url_for('init.status') }}";
+        console.log("DOM fully loaded and parsed");
 
-            // Display the "Searching..." message
-            loadingIndicator.style.display = 'block';
-    
-            fetch("{{ url_for('search.search_data') }}", { // Ensure this line is processed by Flask.
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({searchQuery}),
+        // Initialization button click handler
+        if (initButton) {
+            initButton.addEventListener("click", function () {
+                // Call the Flask route with an AJAX request
+                console.log('Entered the initdata event')
+                console.log('Name {{current_user.username}}')
+                console.log('is_authenticated {{current_user.is_authenticated}}')
+
+                fetch("{{ url_for('init.index') }}", {
+                method: "POST",
+                credentials: 'include', // to include cookies in the request
+                headers: {
+                    'Content-Type': 'application/json',
+                    // Include CSRF token as necessary, example below:
+                    // 'X-CSRF-Token': document.querySelector('input[name="csrf_token"]').value
+                },
+                // If sending JSON data:
+                // body: JSON.stringify({ key: 'value' })
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json(); // or .text() if the response is not JSON
+            })
             .then(data => {
-                loadingIndicator.style.display = 'none';
-                resultsContainer.innerHTML = ''; // Clear previous results
-    
-                if (data.table && data.table_url) {
-                    Object.entries(data.table).forEach(([tableName, tableData]) => {
-                        const tableURL = data.table_url[tableName];
-    
-                        const div = document.createElement('div');
-                        div.className = 'col-12 mt-4';
-    
-                        const header = document.createElement('h5');
-                        header.className = 'text-center small-text-table-header';
-                        const link = document.createElement('a');
-                        link.href = tableURL;
-                        link.textContent = tableName;
-                        link.target = '_blank';
-                        link.rel = 'noopener noreferrer';
-                        header.appendChild(link);
-                        div.appendChild(header);
-    
-                        const table = document.createElement('table');
-                        table.className = 'small-text-table';
-                        const thead = document.createElement('thead');
-                        const headerRow = document.createElement('tr');
-    
-                        Object.keys(tableData).forEach(header => {
-                            const th = document.createElement('th');
-                            th.textContent = header;
-                            headerRow.appendChild(th);
-                        });
-    
-                        thead.appendChild(headerRow);
-                        table.appendChild(thead);
-    
-                        const tbody = document.createElement('tbody');
-                        const numRows = Object.values(tableData)[0].length;
-                        for (let rowIndex = 0; rowIndex < numRows; rowIndex++) {
-                            const tr = document.createElement('tr');
-                            Object.keys(tableData).forEach(header => {
-                                const td = document.createElement('td');
-                                td.textContent = tableData[header][rowIndex];
-                                tr.appendChild(td);
-                            });
-                            tbody.appendChild(tr);
-                        }
-                        table.appendChild(tbody);
-                        div.appendChild(table);
-                        resultsContainer.appendChild(div);
-                    });
-                } else {
-                    resultsContainer.innerHTML = '<p>No Search Results</p>';
+                console.log(data); // Process your response data here
+                // Assuming 'data' object has a 'status' property you want to display
+                if (initStatusElement && data.status) {
+                    initStatusElement.textContent = data.status;
+                }
+                // Optionally redirect if needed:
+                window.location.href = statusUrl;
+
+                // Show the results row
+                if (initRow) {
+                    initRow.style.display = "block";
                 }
             })
-            .catch((error) => {
+            .catch(error => {
                 console.error('Error:', error);
-                loadingIndicator.style.display = 'none';
-                resultsContainer.innerHTML = '<p>Failed to load search results. Please try again later.</p>';
             });
-        };
+        });
+        }
+
+        // Search form submission handler
+        if (searchForm) {
+            searchForm.onsubmit = function(event) {
+                event.preventDefault();
+
+                // FormData is used to capture and send form data in the request
+                const formData = new FormData(this);
+
+                // Display the loading indicator and clear previous results
+                loadingIndicator.style.display = 'block';
+                resultsContainer.innerHTML = '';
+
+                // Fetch request to the search endpoint
+                fetch("{{ url_for('search.search_data') }}", {
+                    method: 'POST',
+                    body: formData // FormData is automatically set to 'multipart/form-data'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Hide the loading indicator
+                    loadingIndicator.style.display = 'none';
+
+                    // Check if data contains table and table_url
+                    if (data.table && data.table_url) {
+                        // Iterate over each entry in the table data
+                        Object.entries(data.table).forEach(([tableName, tableData]) => {
+                            const tableURL = data.table_url[tableName];
+
+                            // Create a div to hold the table and header
+                            const div = document.createElement('div');
+                            div.className = 'col-12 mt-4';
+
+                            // Create the header and link for the table name
+                            const header = document.createElement('h5');
+                            header.className = 'text-center small-text-table-header';
+                            const link = document.createElement('a');
+                            link.href = tableURL;
+                            link.textContent = tableName;
+                            link.target = '_blank';
+                            link.rel = 'noopener noreferrer';
+                            header.appendChild(link);
+                            div.appendChild(header);
+
+                            // Create the table element and populate it with data
+                            const table = document.createElement('table');
+                            table.className = 'small-text-table';
+                            const thead = document.createElement('thead');
+                            const headerRow = document.createElement('tr');
+                            Object.keys(tableData).forEach(header => {
+                                const th = document.createElement('th');
+                                th.textContent = header;
+                                headerRow.appendChild(th);
+                            });
+                            thead.appendChild(headerRow);
+                            table.appendChild(thead);
+
+                            // Create tbody and rows based on the data
+                            const tbody = document.createElement('tbody');
+                            const numRows = Object.values(tableData)[0].length;
+                            for (let rowIndex = 0; rowIndex < numRows; rowIndex++) {
+                                const tr = document.createElement('tr');
+                                Object.keys(tableData).forEach(header => {
+                                    const td = document.createElement('td');
+                                    td.textContent = tableData[header][rowIndex];
+                                    tr.appendChild(td);
+                                });
+                                tbody.appendChild(tr);
+                            }
+                            table.appendChild(tbody);
+                            div.appendChild(table);
+                            resultsContainer.appendChild(div);
+                        });
+                    } else {
+                        resultsContainer.innerHTML = '<p>No Search Results</p>';
+                    }
+                })
+                .catch(error => {
+                    // Hide the loading indicator and show error message
+                    loadingIndicator.style.display = 'none';
+                    resultsContainer.innerHTML = '<p>Failed to load search results. Please try again later.</p>';
+                    console.error('Error:', error);
+                });
+            };
+        }
+        
+        
     });
-    </script> 
+
+</script> 
 
 {% endblock %}

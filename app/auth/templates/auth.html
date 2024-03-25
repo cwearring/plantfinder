@@ -25,7 +25,6 @@
                 </div>
                 
                 <!-- Organization: select from drop down list populated from dB -->
-                {{ form.hidden_tag() }}
                 <div class="form-group mb-3">
                     {{ form.org(class_="form-control", render_kw={"placeholder": "Organization"}) }}
                 </div>
@@ -34,6 +33,7 @@
                 <div class="form-group mb-3">
                     {{ form.username(class_="form-control",placeholder="Username")}}
                 </div>
+
                 {% for error in form.username.errors %}
                 <div class="alert alert-warning alert-dismissible fade show" role="alert">
                     {{ error }}

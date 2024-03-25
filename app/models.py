@@ -22,9 +22,12 @@ class User(UserMixin, db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
-    org_id = db.Column(db.Integer,  unique=False, nullable=True)
+    org_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
     pwd = db.Column(db.String(300), nullable=False)
+    
+    # Define the relationship
+    organization = db.relationship('Organization', backref=db.backref('users', lazy=True))
 
     def __repr__(self):
         return '<User %r>' % self.username

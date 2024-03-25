@@ -3,14 +3,13 @@ from flask import Blueprint, jsonify, request, current_app, redirect, flash, url
 from app.search import bp
 from app.search.search import searchData
 
-@bp.route('/search', methods=["POST"], strict_slashes=False)
+@bp.route('/', methods=["POST"], strict_slashes=False)
 def search_data():
 
     # try deferred import 
     # from app.search import searchData
 
-    data = request.json
-    search_term = data.get('searchQuery')
+    search_term = request.form.get('search_text')
 
     # Call the searchData function
     is_html = True  # use to format detailed status in init_details db field

@@ -20,6 +20,12 @@ def health_check():
     # For simplicity, we're just returning a "healthy" status
     return jsonify({"status": "healthy"}), 200
 
+@bp.route('/details/<int:org_id>', methods=['GET'])
+def get_details(org_id):
+    user_org = Organization.query.get_or_404(org_id)
+    return jsonify({"init_details": user_org.init_details})
+
+
 @bp.route("/", methods=("GET", "POST"), strict_slashes=False)
 def index():
     # template_folder_value = get_absolute_template_folder(bp)
@@ -84,8 +90,9 @@ def index():
                             form=form,
                             title="Woodland Plantfinder Dev", 
                             template_folder='templates',
-                            tables=result_tables,
-                            tables_url = result_url,
+                            table=result_tables,
+                            table_url = result_url,
                             search_term=search_term,
+                            user_org = user_org,
                             initStatusElement=initStatusElement
                             )
