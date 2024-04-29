@@ -171,3 +171,5 @@ logfiles/*
 OrderForms/
 *.pem
 **/.DS_Store
+./import_fitz.py
+aws_pg15-2.sql

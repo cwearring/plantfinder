@@ -72,9 +72,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # LlmaIndex manages data and embeddings 
 from llama_index import ServiceContext, VectorStoreIndex
-from llama_index.retrievers import VectorIndexRetriever
-from llama_index.query_engine import RetrieverQueryEngine
-from llama_index.postprocessor import SimilarityPostprocessor
+# from llama_index.retrievers import VectorIndexRetriever
+# from llama_index.query_engine import RetrieverQueryEngine
+# from llama_index.postprocessor import SimilarityPostprocessor
 
 # lower level functions for creating nodes 
 from llama_index.schema import TextNode
@@ -1218,7 +1218,7 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
                 dbx = dropbox.Dropbox(dropbox_access_token)
 
                 try:
-                    dropbox_filenames = get_dropbox_filenames(dbx,startDir = '/Garden Centre Ordering Forms/OrderForms')
+                    dropbox_filenames = get_dropbox_filenames(dbx,startDir = '/Garden Centre Ordering Forms/OrderForms2024')
                 except Exception as err:
                     logging.error("Error occurred: %s", err)
 
