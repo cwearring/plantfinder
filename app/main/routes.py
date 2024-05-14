@@ -2,6 +2,7 @@ from flask import Flask, session, render_template,  Blueprint, flash, jsonify
 from flask_login import current_user
 from dotenv import load_dotenv
 import uuid
+import os
 
 from app import create_app, db
 from app.models import User, SessionData, Organization
@@ -9,6 +10,7 @@ from app.search.search import searchData
 from app.main.forms import SearchForm
 
 load_dotenv()
+dbx_directory = os.getenv('DROPBOX_DIRECTORY')
 
 # from app import get_absolute_template_folder
 
@@ -48,7 +50,7 @@ def index():
     elif current_user.is_authenticated: # but no user_org matched- create a new org 
         new_org = Organization(
             name="Woodland",
-            dirpath="./OrderForms",
+            dirpath=dbx_directory,
             is_dropbox=True,  # This will use the default if not specified
             is_init=False,  # This will use the default if not specified
             init_status="Please initialize the inventory",  # This will use the default if not specified

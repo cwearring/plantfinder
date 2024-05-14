@@ -101,7 +101,6 @@ MAX_RETRY_COUNT = 5
 BACKOFF_FACTOR = 1.5
 RETRY_STATUS_CODES = (503,)
 
-
 # start of useful functions 
 
 def string_to_list(string: str) -> List:
@@ -1211,6 +1210,8 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
             dbx_refresh = os.getenv('DROPBOX_REFRESH_TOKEN')
             dbx_key = os.getenv('DROPBOX_APP_KEY')
             dbx_secret = os.getenv('DROPBOX_APP_SECRET')
+            dbx_directory = os.getenv('DROPBOX_DIRECTORY')
+
             # logging.info(f'xx - APP_KEY: {APP_KEY}, APP_SECRET: {APP_SECRET}, REFRESH_TOKEN: {REFRESH_TOKEN}')
 
             if (dbx_refresh and dbx_key and dbx_secret):
@@ -1218,7 +1219,7 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
                 dbx = dropbox.Dropbox(dropbox_access_token)
 
                 try:
-                    dropbox_filenames = get_dropbox_filenames(dbx,startDir = '/Garden Centre Ordering Forms/OrderForms2024')
+                    dropbox_filenames = get_dropbox_filenames(dbx,startDir = dbx_directory)
                 except Exception as err:
                     logging.error("Error occurred: %s", err)
 
@@ -1342,6 +1343,7 @@ def background_task(app, dirpath, user_id, useDropbox=False):
                 user_org.init_details = "\n".join(init_log)
                 db.session.merge(user_org)
                 db.session.commit()
+                logging.info('check_thread complete status committed to dB')
 
             message_queue.put(None)
 

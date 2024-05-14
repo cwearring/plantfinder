@@ -97,12 +97,12 @@
         <div id="searchResults"></div>
 
           <!-- Modal -->
-        <div class="modal fade" id="detailsModal" tabindex="-1" role="dialog" aria-labelledby="detailsModalLabel" aria-hidden="true">
+        <div class="modal" id="detailsModal" tabindex="-1" role="dialog" aria-labelledby="detailsModalLabel" aria-hidden="true">
             <div class="modal-dialog modal-lg" role="document">
                 <div class="modal-content">
                     <div class="modal-header small-text-bold">
                         <h5 class="Init Details" id="detailsModalLabel">Details</h5>
-                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <button type="button" class="close" data-bs-dismiss="modal" aria-label="Close">
                             <span aria-hidden="true">&times;</span>
                         </button>
                     </div>
@@ -134,7 +134,10 @@
         .then(data => {
         // Assuming 'data.init_details' is the key where your desired info is stored
         document.querySelector('.modal-body').textContent = data.init_details; // Update modal content
-        new bootstrap.Modal(document.getElementById('detailsModal')).show(); // Show the modal using Bootstrap's Modal class
+
+        // Show the modal using Bootstrap's Modal class
+        new bootstrap.Modal(document.getElementById('detailsModal')).show(); 
+
         })
         .catch(error => {
         console.error('There has been a problem with your fetch operation:', error);

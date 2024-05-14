@@ -8,7 +8,7 @@
     overflow: auto;
   }
   
-  /* Optional: Adjust the modal backdrop to allow interaction with the background */
+  /* Adjust the modal backdrop to allow interaction with the background */
   .modal-backdrop {
     display: none;
   }
@@ -38,7 +38,7 @@
           </button>
         </div>
         <div class="modal-body">
-          Task is complete. Would you like to return to the main page?
+          Task is complete. Return to Main Page.
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-dismiss="modal">Stay Here</button>
@@ -112,16 +112,18 @@
       setupEventSource();
       checkForCompletion(currentUserId);
   });
-
+  
   // Function to show the completion modal
   function showCompletionModal() {
-      $('#completionModal').modal('show'); // Show the modal using jQuery (Bootstrap dependency)
+  var modal = new bootstrap.Modal(document.getElementById('completionModal'));
+  modal.show();
   }
 
   // Add event listener to the modal's confirmation button
   document.getElementById('confirmCompletion').addEventListener('click', function() {
   window.location.href = "{{ url_for('main.index') }}";
   });
+
 })();
 </script>
 

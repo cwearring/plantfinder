@@ -44,8 +44,8 @@ RUN mkdir -p /cache/huggingface && chmod 777 /cache/huggingface
 # the application crashes without emitting any logs due to buffering.
 # CONFIG_LEVEL - set app to use postgres sql on docker private network 
 # CONFIG_LEVEL = [dev, dockr_local, aws_dev1, prod]
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 CONFIG_LEVEL="aws_dev1" \
-    TRANSFORMERS_CACHE=/cache/huggingface HF_HOME=/cache/huggingface
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HF_HOME=/cache/huggingface HF_HOME=/cache/huggingface
+# CONFIG_LEVEL="aws_dev1" 
 
 # change working directory
 WORKDIR /app
