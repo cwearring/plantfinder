@@ -7,12 +7,20 @@ from werkzeug.routing import BuildError
 import logging
 import pandas as pd
 from datetime import datetime
+import os
+from dotenv import load_dotenv
 
 # import gunicorn 
 # from flask_session import Session
 # from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.models import Organization, Tables, TableData
+
+# get settings from the .env file 
+load_dotenv()
+# create a cutoff_date to use for the table reads 
+cutoff_date_string = os.getenv('CUTOFF_DATE', None)
+cutoff_date = datetime.combine(datetime.strptime(cutoff_date_string, '%Y-%m-%d').date(), datetime.min.time())
 
 def findString(token:str, myString:str):
     tst = [n for n,x in enumerate( myString.split('\n')) if token.lower() in x.lower()]
@@ -82,7 +90,11 @@ def searchData(searchTerm:str, isHTML = True ):
     # 2024-03-21 added filter for perennials - get_most_recent_by_vendor returns tuple ()
     all_vendors = Tables.get_unique_vendors()
     # get latest with and without perennial in filename 
-    most_recent_by_vendor = [Tables.get_most_recent_by_vendor(v, str_token='erennia') for v in all_vendors]
+    # most_recent_by_vendor = [Tables.get_most_recent_by_vendor(v, str_token='erennia') for v in all_vendors]
+
+    # temp hack on 2024-06-05 - get all the files since there are multiple valid files per vendor 
+    most_recent_by_vendor = [Tables.get_all_by_vendor(v, cutoff_date) for v in all_vendors]
+
     # unpack the tuples to a single list removing empty entries 
     most_recent_by_vendor = [x for t in most_recent_by_vendor for x in t if x]
 

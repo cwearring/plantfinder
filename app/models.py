@@ -94,7 +94,7 @@ class Tables(db.Model):
         return [vendor[0] for vendor in vendors]
     
     @classmethod
-    def get_all_by_vendor(cls, vendor_name):
+    def get_all_by_vendor(cls, vendor_name, cutoff_date:datetime = None  ):
         """
         Retrieves all entries for a specific vendor from the database, 
         ordered by the file_last_modified date in descending order, and then by file_name in ascending order.
@@ -109,10 +109,14 @@ class Tables(db.Model):
         - A list of Tables instances representing all entries associated with the specified vendor, 
         sorted by the most recent file_last_modified dates and then by file_name.
         """
-        return cls.query.filter_by(vendor=vendor_name).order_by(cls.file_last_modified.desc(), cls.file_name).all()    
+        all_files = cls.query.filter_by(vendor=vendor_name).order_by(cls.file_last_modified.desc(), cls.file_name).all()
+        # remove optional last modified before 
+        good_files = [f for f in all_files if f.file_last_modified > cutoff_date]
 
+        return good_files
+    
     @classmethod
-    def get_most_recent_by_vendor(cls, vendor_name, str_token: str = None):
+    def get_most_recent_by_vendor(cls, vendor_name, str_token: str = None, ):
         """
         Returns the table entries with the most recent file_last_modified date for a given vendor:
         - one with an optional user-specified string token in the file_name
