@@ -1045,13 +1045,16 @@ def get_file_table_xls(file_data = None):
                     wb = pxl.load_workbook(dbx_file)
                     # dict with a key for each worksheet 
                     # wb_sheets = {ws: wb[ws] for ws in wb.sheetnames}
-                    wb_sheets = {ws: [value for value in wb[ws].iter_rows(values_only=True) if wb[ws].row_dimensions[nn].hidden == False]  
-                                 for nn,ws in enumerate(wb.sheetnames)}
+                    wb_sheets = {ws: [value for n,value in enumerate(wb[ws].iter_rows(values_only=True)) 
+                                      if wb[ws].row_dimensions[n].hidden == False]  
+                                 for n,ws in enumerate(wb.sheetnames)}
 
                     # 2024-06-05 - check for hidden rows - log results 
-                    ws_rows_visible = {ws: [nn for nn,r in enumerate(wb[ws].rows) if wb[ws].row_dimensions[nn].hidden == False] 
+                    ws_rows_visible = {ws: [nn for nn,r in enumerate(wb[ws].rows) 
+                                            if wb[ws].row_dimensions[nn].hidden == False] 
                              for n,ws in enumerate(wb.sheetnames) }
-                    ws_rows_hidden = {ws: [nn for nn,r in enumerate(wb[ws].rows) if wb[ws].row_dimensions[nn].hidden == True] 
+                    ws_rows_hidden = {ws: [nn for nn,r in enumerate(wb[ws].rows) 
+                                           if wb[ws].row_dimensions[nn].hidden == True] 
                              for n,ws in enumerate(wb.sheetnames) }                    #  log results 
                     logging.info(f'Worksheets {[(k,len(v),"visible rows") for k,v in ws_rows_visible.items()]} ')
                     logging.info(f'Worksheets {[(k,len(v),"hidden rows") for k,v in ws_rows_hidden.items()]} ')
@@ -1288,7 +1291,7 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
                     tblname = file_data.get('filetoken')
 
                 # yield the status
-                logging.info(f"Created {tblname} table at {datetime.now():%b %d %I:%M %p}/nHeader: {table_header[k]['header_guess']}")
+                logging.info(f"Created {tblname} table at {datetime.now():%b %d %I:%M %p}\nHeader: {table_header[k]['header_guess']}")
                 yield f"Created {tblname} table at {datetime.now():%b %d %I:%M %p}"
                 yield f"From: {table_header[k].get('header_raw')}"
                 yield f"Guess: {table_header[k].get('header_guess')}"
