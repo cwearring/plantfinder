@@ -5,29 +5,6 @@ PYDEVD_WARN_EVALUATION_TIMEOUT environment variable to a bigger value
 
 https://www.docugami.com/pricing
 
-(clip=None, vertical_strategy='lines', horizontal_strategy='lines', 
-vertical_lines=None, horizontal_lines=None, 
-snap_tolerance=3, snap_x_tolerance=None, snap_y_tolerance=None, 
-join_tolerance=3, join_x_tolerance=None, join_y_tolerance=None, 
-edge_min_length=3, 
-min_words_vertical=3, min_words_horizontal=1, 
-intersection_tolerance=3, intersection_x_tolerance=None, intersection_y_tolerance=None, 
-text_tolerance=3, text_x_tolerance=3, text_y_tolerance=3)
-
-row_rgb = {f'{n:02d}':(# page.get_pixmap(clip = row.cells[0]).colorspace.this.Fixed_RGB,
-                        # page.get_pixmap(clip = row.cells[0]).color_topusage()[0],
-                        
-                        sum(1 for item in tbl.extract()[n] if len(item) > 0),
-                        tbl.extract()[n][0])
-            for n,row in enumerate (tbl.rows)}
-
-# freq = [len(row.cells) for row in tbl.rows]
-# counts = {item:freq.count(item) for item in freq}
-# pp.pprint(counts)
-
-# for n,row in enumerate (tbl.rows):
-#    rgb = page.get_pixmap(clip = row.cells[0]).px.colorspace.this.Fixed_BGR
-
 https://github.com/langchain-ai/langchain/blob/master/cookbook/Semi_Structured_RAG.ipynb?ref=blog.langchain.dev 
 https://python.langchain.com/docs/modules/data_connection/retrievers/multi_vector
 https://levelup.gitconnected.com/a-guide-to-processing-tables-in-rag-pipelines-with-llamaindex-and-unstructuredio-3500c8f917a7
@@ -61,6 +38,7 @@ from typing import List, Optional
 import base64
 import requests
 import dropbox
+import openpyxl as pxl 
 
 # for more secure file handling
 from werkzeug.utils import secure_filename
@@ -445,6 +423,7 @@ def parse_fullfilename(full_filename:str = None):
         'filename':filename, 
         'filetoken': filetoken, # secure_filename(filename.split('.')[0])
         'filetype':filetype
+        'worksheet': None # each sheet in an XL workbook is a unique table
         'dropboxdbx' : None (placeholder for dropbox dbx object)
         'dropboxid': None (placeholder for dropboxID)
         'dropboxurl': None (placeholder for dropbox url)
@@ -458,7 +437,7 @@ def parse_fullfilename(full_filename:str = None):
         filetoken = secure_filename(filename.split('.')[0])
 
         return {'fullfilename': full_filename,'dirpath':dirpath,'filename':filename, 
-                'filetoken':filetoken, 'filetype':filetype, 'vendor':vendor, 
+                'filetoken':filetoken, 'filetype':filetype, 'vendor':vendor, 'worksheet':None,
                 'dropboxdbx':None, 'dropboxid':None, 'dropboxurl':None  }
     except:
         return {'fullfilename':None,'dirpath':None, 'filename':None, 
@@ -657,7 +636,7 @@ def find_matching_index_ignore_case(list1, list2):
     - int: The index of the first matching list in list2, or None if no match is found.
     """
     # Convert all items in list1 to lowercase for case-insensitive comparison
-    list1_lower = [item.lower() for item in list1 if item is not pd.NA and pd.notna(item)]
+    list1_lower = [str(item).lower() for item in list1 if item is not pd.NA and pd.notna(item)]
     for index, sublist in enumerate(list2):
         # Convert all items in the current sublist to lowercase, skipping NaN values
         sublist_lower = [str(item).lower() for item in sublist if item is not pd.NA and pd.notna(item)]
@@ -803,25 +782,24 @@ def get_bestguess_table_header(table_as_list = None):
                 doc_ids=None,
             )
             # request gpt's best guess at the row to use for table headings 
-            oneshotprompt=f"""Return {numcols}  table column headings from this 
-            price sheet of plants as a python list of length {numcols}.
+            multishotprompt=f"""Return a rows with as close to {numcols} table column headings as you can find 
+            for this price sheet plants as a python list of length as close to {numcols} as feasible. 
 
-            Return an existing row. Do not make up rows.
-            """
-
-            multishotprompt=f"""Return {numcols} table column headings for this price sheet 
-            of plants with columns as a python list of length {numcols}. 
-
-            Example table column headings:
-            for 2 column table header = ['Description', 'A']
-            for 5 column table header = ['Name', 'Latin Name', 'Price', 'Available Qty', 'Order Qty']
-            for 8 column table header = [ "Product","SIZE1","SIZE2","PRICE", "AVL",  "COMMENTS", "ORDER", "Total"]
-            for 7 column table header = ["Category", "WH", "Code", "Botantical Name", "size", "Price", "Available"]
-
+            Examples of valid table rows with column headings:
+            2 column: ['Description', 'A']
+            5 column: ['Name', 'Latin Name', 'Price', 'Available Qty', 'Order Qty']
+            8 column: [ "Product","SIZE1","SIZE2","PRICE", "AVL",  "COMMENTS", "ORDER", "Total"]
+            7 column : ["Category", "WH", "Code", "Botantical Name", "size", "Price", "Available"]
+            6 column: ['Order Qty', 'Part number', 'Description', 'UPC Code', 'WH $ 2024\nNET', 'COMMENTS']
             Return an existing row. Do not make up rows.
             """
             
-            response = query_engine.query(multishotprompt)
+            try:
+                response = query_engine.query(multishotprompt)
+            except:
+                logging.error(f"Error - gpt guess table column headings {response}")
+                return None
+
             header_rownum = int(response.source_nodes[0].id_)
             header_node_text = response.source_nodes[0].text
             header_raw = table_as_list[header_rownum]
@@ -853,7 +831,8 @@ def get_bestguess_table_header(table_as_list = None):
             return best_guess
         else:
             return None
-    except:
+    except :
+        logging.error(f"Error - get_bestguess_table_header")
         return None
         pass
 
@@ -884,7 +863,12 @@ def get_bestguess_table_search_columns(file_table):
         Return only existing keys. Do not explain. Just return the key.
         """
 
-        response = query_engine.query(oneshotprompt)
+        try:
+            response = query_engine.query(oneshotprompt)
+        except:
+            logging.error(f"Error - gpt guess table search columns {response}")
+            return None
+        
         # df_search_cols = response.response.split(',')
         df_search_cols = list(response.metadata.keys())
         jnk = 0
@@ -892,7 +876,7 @@ def get_bestguess_table_search_columns(file_table):
         return df_search_cols
 
     except ValueError as e:
-        print(f"Error: {e}")
+        print(f"Value Error best_guess_table_search_columns: {e}")
         return None
     
 def get_file_table_pdf(file_data:dict = None):
@@ -1021,7 +1005,7 @@ def get_file_table_pdf(file_data:dict = None):
                             'header_node_text':best_guess.get('header_node_text'),
                             'plantname_in_header':best_guess.get('plantname_in_header')}
                         
-            return df, table_header
+            return {full_filename:df}, {full_filename:table_header}
         else:
             logging.error('No table found with fitz parse by grid or text ')
             return None, None
@@ -1046,8 +1030,6 @@ def get_file_table_xls(file_data = None):
     try:
         # check if the file exists 
         full_filename = file_data.get('fullfilename')
-
-        # get the best guess at the header row
         if len(full_filename) > 0:
             # branch based on the source of the files 
             if file_data.get('dropboxdbx') and file_data.get('dropboxid'):
@@ -1059,56 +1041,76 @@ def get_file_table_xls(file_data = None):
                     md,dbxfile = dbx.files_download(mfile.path_lower)
                     # open a buffer to the dbx file 
                     dbx_file = io.BytesIO(dbxfile.content) 
-                    # PDF: read the doc into a dataframe
-                    df = pd.read_excel( dbx_file, header=None)
-                    # Need a modificatiion to read multiple sheets from a workbook 
+                    # load the workbook 
+                    wb = pxl.load_workbook(dbx_file)
+                    # dict with a key for each worksheet 
+                    # wb_sheets = {ws: wb[ws] for ws in wb.sheetnames}
+                    wb_sheets = {ws: [value for value in wb[ws].iter_rows(values_only=True) if wb[ws].row_dimensions[nn].hidden == False]  
+                                 for nn,ws in enumerate(wb.sheetnames)}
+
+                    # 2024-06-05 - check for hidden rows - log results 
+                    ws_rows_visible = {ws: [nn for nn,r in enumerate(wb[ws].rows) if wb[ws].row_dimensions[nn].hidden == False] 
+                             for n,ws in enumerate(wb.sheetnames) }
+                    ws_rows_hidden = {ws: [nn for nn,r in enumerate(wb[ws].rows) if wb[ws].row_dimensions[nn].hidden == True] 
+                             for n,ws in enumerate(wb.sheetnames) }                    #  log results 
+                    logging.info(f'Worksheets {[(k,len(v),"visible rows") for k,v in ws_rows_visible.items()]} ')
+                    logging.info(f'Worksheets {[(k,len(v),"hidden rows") for k,v in ws_rows_hidden.items()]} ')
+
+                    # df is dict - map each worksheet to a dataframe 
+                    df_dict = {nm:pd.DataFrame(val) for nm,val in wb_sheets.items()}
                     dbx_file.close()
+
                 except:
                     logging.error(f'Error retrieving dropbox file {full_filename} ')
                     logging.error(f"DBX {type(file_data.get('dropboxdbx'))}" )
                     logging.error(f"DBX fileid {type(file_data.get('dropboxid'))} '")
                     return None, None
             else:
+                # 2024-06-06 - no support of multiple sheets - pd.read_excel only works for one sheet workbooks 
                 # get the last modified date time as string like 'Mon Jan 31 2024 7:34 PM'
                 last_modified = get_last_modified_datetime(full_filename)
                 # read file as dataframe 
                 df = pd.read_excel( full_filename, header=None)
 
-            # remove columns with all null values 
-            df.dropna(axis=1, how='all', inplace=True)
-            # remove rows with all null values 
-            df.dropna(axis=0, how='all', inplace=True)
+            # create dict for headers - one for each sheet 
+            table_header = {}
+            # iterate over all excel sheets 
+            for nm, df in df_dict.items():
+                # remove columns with all null values 
+                df.dropna(axis=1, how='all', inplace=True)
+                # remove rows with all null values 
+                df.dropna(axis=0, how='all', inplace=True)
 
-           # get_bestguess_table_header => returns a dictionary
-            best_guess = get_bestguess_table_header(table_as_list=df.head(50).values.tolist())
-            if best_guess is None:
-                logging.error(f"Invalid input: {full_filename} raised error in get_bestguess_table_header.")
+            # get_bestguess_table_header => returns a dictionary
+                best_guess = get_bestguess_table_header(table_as_list=df.head(50).values.tolist())
+                if best_guess is None:
+                    logging.error(f"Invalid input: {full_filename} raised error in get_bestguess_table_header.")
 
-            # Convert row values to list as original text of row 
-            row_text = df.apply(lambda row: str(list(row.values)), axis=1)
-            # Add the filename and row as text to the DataFrame
-            df['rowtext'] = row_text # add as last column 
-            del row_text
-            # Add the filename as first column to the DataFrame
-            df.insert(0, 'filename', file_data.get('filename'))
-            # update the column names 
-            df.columns = best_guess.get('header_guess')
+                # Convert row values to list as original text of row 
+                row_text = df.apply(lambda row: str(list(row.values)), axis=1)
+                # Add the filename and row as text to the DataFrame
+                df['rowtext'] = row_text # add as last column 
+                del row_text
+                # Add the filename as first column to the DataFrame
+                df.insert(0, 'filename', file_data.get('filename'))
+                # update the column names 
+                df.columns = best_guess.get('header_guess')
 
-            # replace all null values with a string 
-            df.fillna('empty', inplace=True)
-            # drop all the rows above the header row
-            df = df.iloc[best_guess.get('header_rownum')+1:]
+                # replace all null values with a string 
+                df.fillna('empty', inplace=True)
+                # drop all the rows above the header row
+                df = df.iloc[best_guess.get('header_rownum')+1:]
 
-            table_header = {'filename': file_data.get('filename'),
-                            'last_mod_datetime':last_modified,
-                            'numcols' : len(df.columns),
-                            'header_rownum':best_guess.get('header_rownum'),
-                            'header_guess':best_guess.get('header_guess'), 
-                            'header_raw':best_guess.get('header_raw'), 
-                            'header_node_text':best_guess.get('header_node_text'),
-                            'plantname_in_header':best_guess.get('plantname_in_header')}
+                table_header[nm] = {'filename': file_data.get('filename'),
+                                'last_mod_datetime':last_modified,
+                                'numcols' : len(df.columns),
+                                'header_rownum':best_guess.get('header_rownum'),
+                                'header_guess':best_guess.get('header_guess'), 
+                                'header_raw':best_guess.get('header_raw'), 
+                                'header_node_text':best_guess.get('header_node_text'),
+                                'plantname_in_header':best_guess.get('plantname_in_header')}
             
-            return df, table_header
+            return df_dict, table_header
         else:
             print('No table found with fitz parse by grid or text ')
             return None, None 
@@ -1137,11 +1139,14 @@ def save_table_to_session(file_data, file_table, table_header, search_headers):
     status = {'table': None, 'data': None}
 
     try:
+        # 2024-06-06 logic for multiple sheets - file_data.get('worksheet') is not None 
+        tblname = file_data.get('filetoken')+'_'+file_data.get('worksheet') if file_data.get('worksheet') else file_data.get('filetoken')
+
         # Retrieve an existing Tables entry or None if it doesn't exist
         existing_table = Tables.query.filter_by(
             vendor=file_data.get("vendor"),
             file_name=file_data.get("filename"),
-            table_name=file_data.get("filetoken")
+            table_name=tblname
         ).first()
 
         # Update existing Tables entry or create a new one
@@ -1155,7 +1160,7 @@ def save_table_to_session(file_data, file_table, table_header, search_headers):
                 file_name=file_data.get("filename"), 
                 file_last_modified = table_header.get("last_mod_datetime"),
                 file_dropbox_url=file_data.get("dropboxurl"),
-                table_name=file_data.get("filetoken")
+                table_name=tblname
             )
             db.session.add(new_table)
             status['table'] = 'New'
@@ -1164,7 +1169,7 @@ def save_table_to_session(file_data, file_table, table_header, search_headers):
         df_json = file_table.to_json(orient='split')
 
         # Retrieve an existing TableData entry or None if it doesn't exist
-        existing_table_data = TableData.query.filter_by(table_name=file_data.get("filetoken")).first()
+        existing_table_data = TableData.query.filter_by(table_name=tblname).first()
 
         # Update existing TableData entry or create a new one
         if existing_table_data:
@@ -1174,7 +1179,7 @@ def save_table_to_session(file_data, file_table, table_header, search_headers):
             status['data'] = 'Updated'
         else:
             new_table_data = TableData(
-                table_name=file_data.get("filetoken"), 
+                table_name=tblname, 
                 search_columns=search_headers,
                 row_count=len(file_table), 
                 df=df_json
@@ -1256,6 +1261,7 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
             yield f'{file_data.get("vendor")}: {file_data.get("filename")} at {datetime.now():%b %d %I:%M %p}'
 
             # branch pdf vs. xlsx files 
+            # 2024-06-06 returns file_table, table_header as dicts of df, one df per worksheet 
             if file_data.get('filetype').lower() == 'pdf':
                 # extract tables as dataframes - 2024-02-26 file_data has fields for dropbox  
                 file_table, table_header = get_file_table_pdf(file_data)
@@ -1264,29 +1270,38 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
                 # extract tables as dataframes - 2024-02-26 file_data has fields for dropbox 
                 file_table, table_header = get_file_table_xls(file_data)
             
-            # remove columns with all null values 
-            file_table.dropna(axis=1, how='all', inplace=True)
-            # remove rows with all null values 
-            file_table.dropna(axis=0, how='all', inplace=True)
+            # 2024-06-06 - dicts -  remove columns with all null values 
+            for k,v in file_table.items():
+                v.dropna(axis=1, how='all', inplace=True)
+                # remove rows with all null values 
+                v.dropna(axis=0, how='all', inplace=True)
 
-            # guess the columns to search for plant names 
-            search_headers = get_bestguess_table_search_columns(file_table)
+                # guess the columns to search for plant names 
+                search_headers = get_bestguess_table_search_columns(v)
 
-            # yield the status
-            logging.info(f"Created {file_data.get('filetoken')} table at {datetime.now():%b %d %I:%M %p}/nHeader: {table_header['header_guess']}")
-            yield f"Created {file_data.get('filetoken')} table at {datetime.now():%b %d %I:%M %p}"
-            yield f"From: {table_header.get('header_raw')}"
-            yield f"Guess: {table_header.get('header_guess')}"
-            yield f"Search: {search_headers} "
+                # sheet specific tablename if required 
+                if len(file_table) > 1:
+                    file_data['worksheet'] = k
+                    # 2024-06-06 logic for multiple sheets - file_data.get('worksheet') is not None 
+                    tblname = file_data.get('filetoken')+'_'+file_data.get('worksheet') if file_data.get('worksheet') else file_data.get('filetoken')
+                else:
+                    tblname = file_data.get('filetoken')
 
-            # save the table to the session 
-            status = save_table_to_session(file_data, file_table, table_header, search_headers )
+                # yield the status
+                logging.info(f"Created {tblname} table at {datetime.now():%b %d %I:%M %p}/nHeader: {table_header[k]['header_guess']}")
+                yield f"Created {tblname} table at {datetime.now():%b %d %I:%M %p}"
+                yield f"From: {table_header[k].get('header_raw')}"
+                yield f"Guess: {table_header[k].get('header_guess')}"
+                yield f"Search: {search_headers} "
+
+                # save the table to the session 
+                status = save_table_to_session(file_data, file_table[k], table_header[k], search_headers )
 
         # Commit the session to save changes to the database
         db.session.commit()
 
     except SQLAlchemyError as e:
-        logging.error(f"Database operation failed: {e}")
+        logging.error(f"save_all_file_tables_in_dir failed: {e}")
         db.session.rollback()
 
 def background_task(app, dirpath, user_id, useDropbox=False):
@@ -1330,7 +1345,7 @@ def background_task(app, dirpath, user_id, useDropbox=False):
                 message_queue.put(update)
             
             # Signal task completion
-            completion_message = f"Completed Inventory Update at {datetime.now():%b %d %I:%M %p}"
+            completion_message = f"\nInventory Update at {datetime.now():%b %d %I:%M %p}"
             logging.info(completion_message)
             message_queue.put(completion_message)
 

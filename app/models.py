@@ -2,6 +2,7 @@ from app import db
 from flask_login import UserMixin
 import pandas as pd 
 from datetime import datetime 
+from zoneinfo import ZoneInfo
 from io import StringIO
 from sqlalchemy import and_, not_
 
@@ -60,12 +61,12 @@ class Tables(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     vendor = db.Column(db.String(300), unique=False, nullable=False)
-    file_name = db.Column(db.String(300), unique=True, nullable=False)
+    file_name = db.Column(db.String(300), unique=False, nullable=False)
     file_last_modified = db.Column(db.DateTime, nullable=False)
     file_dropbox_url = db.Column(db.String(2048), nullable=True, default=None)
     table_name = db.Column(db.String(300), unique=True, nullable=False)
-    created_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    updated_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_date = db.Column(db.DateTime, nullable=False, default=datetime.now(ZoneInfo("UTC")))
+    updated_date = db.Column(db.DateTime, nullable=False, default=datetime.now(ZoneInfo("UTC")), onupdate=datetime.now(ZoneInfo("UTC")))
 
     @classmethod
     def get_all_sorted(cls):
