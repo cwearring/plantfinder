@@ -43,20 +43,18 @@
         You are logged in as user: {{ current_user.username }} from {{user_org.name}}&nbsp;&nbsp;
         <a href="{{url_for('auth.logout')}}">Logout</a>
 
-        <!-- Row: Init Data Button -->
-        <div class="row mt-2">
-            <div class="col-lg-5 col-md-6 m-auto card p-2">
-                <button type="button" id="initButton" class="btn btn-primary">Refresh Supplier Inventories</button>
-            </div>
-        </div>
-
-        <!-- Row: Display init status -->
+         <!-- Row: Display init status -->
         <div class="row mt-2" id="initRow">
             <div class="col-lg-5 col-md-6 m-auto card p-2">
-                {% if initStatusElement %}
-                    <p id="initStatusElement" class="text-left">{{ initStatusElement | safe }}</p>
-                    <a href="#" data-id="{{ user_org.id }}" onclick="fetchDetails(this.getAttribute('data-id'))">Show Details</a>
-                    {% endif %}
+            {% if initStatusElement %}
+                <div class="d-flex align-items-center justify-content-center">
+                    <a href="#" id="initLink" class="text-primary custom-link me-1">Refresh Now </a>
+                    <span class="me-2"> -</span>
+                    <p id="initStatusElement" class="m-0 me-2">{{ initStatusElement | safe }}</p>
+                <span class="me-2">-</span>
+                <a href="#" data-id="{{ user_org.id }}" onclick="fetchDetails(this.getAttribute('data-id'))">Details</a>
+                </div>
+            {% endif %}
             </div>
         </div>
 
@@ -150,14 +148,15 @@
         const loadingIndicator = document.getElementById("loading");
         const resultsContainer = document.getElementById("searchResults");
 
-        const initButton = document.getElementById("initButton");
+        const initLink = document.getElementById("initLink");
         const initRow = document.getElementById("initRow");
         const statusUrl = "{{ url_for('init.status') }}";
         console.log("DOM fully loaded and parsed");
 
         // Initialization button click handler
-        if (initButton) {
-            initButton.addEventListener("click", function () {
+        if (initLink) {
+            initLink.addEventListener("click", function () {
+                event.preventDefault(); // Prevent the default link behavior
                 // Call the Flask route with an AJAX request
                 console.log('Entered the initdata event')
                 console.log('Name {{current_user.username}}')

@@ -1380,7 +1380,7 @@ def background_task(app, dirpath, user_id, useDropbox=False):
                 check_thread.task_complete = True
                 # Save the data updates
                 user_org.is_init = True
-                user_org.init_status = f'Inventory last refreshed at {datetime.now():%b %d %I:%M %p}'
+                user_org.init_status = f'Last refreshed on {datetime.now():%b %d %I:%M %p}'
                 user_org.init_details = "\n".join(init_log)
                 db.session.merge(user_org)
                 db.session.commit()
