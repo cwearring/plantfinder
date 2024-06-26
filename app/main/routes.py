@@ -49,7 +49,7 @@ def index():
         initStatusElement = user_org.init_status
     elif current_user.is_authenticated: # but no user_org matched- create a new org 
         new_org = Organization(
-            name="Woodland",
+            name="Lakewood",
             dirpath=dbx_directory,
             is_dropbox=True,  # This will use the default if not specified
             is_init=False,  # This will use the default if not specified
@@ -90,7 +90,7 @@ def index():
 
     return render_template("index.html", 
                             form=form,
-                            title="Woodland Plantfinder Dev", 
+                            title="Lakewood Plantfinder Dev", 
                             template_folder='templates',
                             table=result_tables,
                             table_url = result_url,

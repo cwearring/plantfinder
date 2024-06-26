@@ -41,7 +41,7 @@ def login():
     return render_template("auth.html",
         form=form,
         text="Login",
-        title="Login to Woodland Plantfinder",
+        title="Login to Lakewood Plantfinder",
         btn_action="Login"
         )
 
@@ -91,7 +91,7 @@ def register():
     return render_template("auth.html",
         form=form,
         text="Create account",
-        title="Register for Woodland Plantfinder",
+        title="Register for Lakewood Plantfinder",
         btn_action="Register account"
         )
 

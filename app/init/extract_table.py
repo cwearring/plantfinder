@@ -375,9 +375,10 @@ def most_frequent_integer(int_list: List[int]) -> Optional[int]:
     for num in int_list:
         frequency[num] = frequency.get(num, 0) + 1
 
-    most_frequent = max(frequency, key=frequency.get, default=None)
+    entries = sorted(frequency.items(), key=lambda x: (x[1], x[0]), reverse=True)
 
-    return most_frequent
+    return entries[0][0] # largest key of most frequently occurring col count
+    # return most_frequent
 
 def most_frequent_num(float_list: List[float]) -> Optional[int]:
     """
@@ -610,6 +611,7 @@ def get_firstpage_tables_as_list(doc=None):
     table_strategy = 'lines'
     tbls = doc[0].find_tables(vertical_strategy='lines', horizontal_strategy='lines')
     if len(tbls.tables) ==0: # did not find tables by grid, try spaces 
+    # if True: # did not find tables by grid, try spaces 
         tbls = doc[0].find_tables(vertical_strategy='text', horizontal_strategy='text')
         table_strategy = 'text'
 
@@ -791,6 +793,7 @@ def get_bestguess_table_header(table_as_list = None):
             8 column: [ "Product","SIZE1","SIZE2","PRICE", "AVL",  "COMMENTS", "ORDER", "Total"]
             7 column : ["Category", "WH", "Code", "Botantical Name", "size", "Price", "Available"]
             6 column: ['Order Qty', 'Part number', 'Description', 'UPC Code', 'WH $ 2024\nNET', 'COMMENTS']
+            7 column: ['Code', 'Botanical', 'Size', 'Quantity', 'Price', '25 plus price', 'Order']
             Return an existing row. Do not make up rows.
             """
             
@@ -1258,6 +1261,25 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
                 shared_link = create_shared_link_with_retries(dbx, full_filename)
                 file_data['dropboxurl'] = shared_link
 
+            # check the filenames already in our dB 
+            check_file = Tables.query.filter_by(
+                vendor=file_data.get("vendor"),
+                file_name=file_data.get("filename")
+            )
+
+            # get the first table if we found the tile
+            existing_table = check_file.first() if check_file else None
+
+            if existing_table:
+                # get the elements into a list 
+                file_tables = [x for x in check_file]
+                # yield the status
+                logging.info(f'{file_data.get("vendor")}: {file_data.get("filename")} read previously on: {existing_table.created_date:%b %d %I:%M %p}')
+                yield ' '
+                yield f'{file_data.get("vendor")}: {file_data.get("filename")} read previously on: {existing_table.created_date:%b %d %I:%M %p}'
+                yield f'{file_data.get("filename")} last modified on {existing_table.file_last_modified} has {len(file_tables)} tables in search scope'
+                continue
+
             # yield the status
             logging.info(f'{file_data.get("vendor")}: {file_data.get("filename")} at {datetime.now():%b %d %I:%M %p}')
             yield ' '
@@ -1291,10 +1313,11 @@ def save_all_file_tables_in_dir(dirpath:str, use_dropbox = False):
                     tblname = file_data.get('filetoken')
 
                 # yield the status
-                logging.info(f"Created {tblname} table at {datetime.now():%b %d %I:%M %p}\nHeader: {table_header[k]['header_guess']}")
-                yield f"Created {tblname} table at {datetime.now():%b %d %I:%M %p}"
+                logging.info(f"Created {tblname} at {datetime.now():%b %d %I:%M %p}\nHeader: {table_header[k]['header_guess']}")
+                if len(file_table) > 1: yield f"---" 
+                yield f"Table: {tblname} table with {len(v)} rows "
                 yield f"From: {table_header[k].get('header_raw')}"
-                yield f"Guess: {table_header[k].get('header_guess')}"
+                yield f"Guess: {table_header[k].get('header_guess')[1:-1]}"
                 yield f"Search: {search_headers} "
 
                 # save the table to the session 
